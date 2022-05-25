@@ -28,6 +28,7 @@ let perms = #{
 
 let add_sks = [];
 for (primary, idx) in primary_keys {
+	print(`primary: ${primary.acc}`);
 	let target_id = p::get_did(primary);
 	let nonce = STORAGE.map("Identity", "OffChainAuthorizationNonce", target_id);
 	if nonce == () {
@@ -49,7 +50,7 @@ for (primary, idx) in primary_keys {
 		let sig = key.sign(encoded_auth);
 		sk_with_auth += #{
 			secondary_key: #{
-				signer: key,
+				key: key,
 				permissions: perms,
 			},
 			auth_signature: sig,
