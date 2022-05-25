@@ -77,6 +77,33 @@
       "divisible": "bool",
       "asset_type": "AssetType"
     },
+    "AssetMetadataName": "Text",
+    "AssetMetadataValue": "Vec<u8>",
+    "AssetMetadataLocalKey": "u64",
+    "AssetMetadataGlobalKey": "u64",
+    "AssetMetadataKey": {
+      "_enum": {
+        "Global": "u64",
+        "Local": "u64"
+      }
+    },
+    "AssetMetadataLockStatus": {
+      "_enum": {
+        "Unlocked": "",
+        "Locked": "",
+        "LockedUntil": "Moment"
+      }
+    },
+    "AssetMetadataValueDetail": {
+      "expire": "Option<Moment>",
+      "lock_status": "AssetMetadataLockStatus"
+    },
+    "AssetMetadataDescription": "Text",
+    "AssetMetadataSpec": {
+      "url": "Option<Url>",
+      "description": "Option<AssetMetadataDescription>",
+      "type_def": "Option<Vec<u8>>"
+    },
     "PalletName": "Text",
     "DispatchableName": "Text",
     "AssetPermissions": {
@@ -116,16 +143,6 @@
       "extrinsic": "ExtrinsicPermissions",
       "portfolio": "PortfolioPermissions"
     },
-    "LegacyPalletPermissions": {
-      "pallet_name": "PalletName",
-      "total": "bool",
-      "dispatchable_names": "Vec<DispatchableName>"
-    },
-    "LegacyPermissions": {
-      "asset": "Option<Vec<Ticker>>",
-      "extrinsic": "Option<Vec<LegacyPalletPermissions>>",
-      "portfolio": "Option<Vec<PortfolioId>>"
-    },
     "Signatory": {
       "_enum": {
         "Identity": "IdentityId",
@@ -133,7 +150,7 @@
       }
     },
     "SecondaryKey": {
-      "signer": "Signatory",
+      "key": "AccountId",
       "permissions": "Permissions"
     },
     "SecondaryKeyWithAuth": {
@@ -163,8 +180,14 @@
       "secondary_key": "SecondaryKey"
     },
     "DidRecord": {
-      "primary_key": "AccountId",
-      "secondary_keys": "Vec<SecondaryKey>"
+      "primary_key": "Option<AccountId>"
+    },
+    "KeyRecord": {
+      "_enum": {
+        "PrimaryKey": "IdentityId",
+        "SecondaryKey": "(IdentityId, Permissions)",
+        "MultiSigSignerKey": "AccountId"
+      }
     },
     "KeyIdentityData": {
       "identity": "IdentityId",
@@ -707,14 +730,7 @@
       "frozen": "bool"
     },
     "AuthorizationNonce": "u64",
-    "Counter": "u64",
     "Percentage": "Permill",
-    "TransferManager": {
-      "_enum": {
-        "CountTransferManager": "Counter",
-        "PercentageTransferManager": "Percentage"
-      }
-    },
     "RestrictionResult": {
       "_enum": ["Valid", "Invalid", "ForceValid"]
     },
@@ -724,6 +740,56 @@
       "recipient": "AccountId",
       "amount": "Balance",
       "tx_hash": "H256"
+    },
+    "AssetScope": {
+      "_enum": {
+        "Ticker": "Ticker"
+      }
+    },
+    "StatOpType": {
+      "_enum": ["Count", "Balance"]
+    },
+    "StatType": {
+      "op": "StatOpType",
+      "claim_issuer": "Option<(ClaimType, IdentityId)>"
+    },
+    "StatClaim": {
+      "_enum": {
+        "Accredited": "bool",
+        "Affiliate": "bool",
+        "Jurisdiction": "Option<CountryCode>"
+      }
+    },
+    "Stat1stKey": {
+      "asset": "AssetScope",
+      "stat_type": "StatType"
+    },
+    "Stat2ndKey": {
+      "_enum": {
+        "NoClaimStat": "",
+        "Claim": "StatClaim"
+      }
+    },
+    "StatUpdate": {
+      "key2": "Stat2ndKey",
+      "value": "Option<u128>"
+    },
+    "TransferCondition": {
+      "_enum": {
+        "MaxInvestorCount": "u64",
+        "MaxInvestorOwnership": "Percentage",
+        "ClaimCount": "(StatClaim, IdentityId, u64, Option<u64>)",
+        "ClaimOwnership": "(StatClaim, IdentityId, Percentage, Percentage)"
+      }
+    },
+    "AssetTransferCompliance": {
+      "paused": "bool",
+      "requirements": "Vec<TransferCondition>"
+    },
+    "TransferConditionExemptKey": {
+      "asset": "AssetScope",
+      "op": "StatOpType",
+      "claim_type": "Option<ClaimType>"
     },
     "AssetCompliance": {
       "paused": "bool",
@@ -782,13 +848,13 @@
         "Err": "Vec<u8>"
       }
     },
-    "DidRecordsSuccess": {
+    "RpcDidRecordsSuccess": {
       "primary_key": "AccountId",
       "secondary_keys": "Vec<SecondaryKey>"
     },
-    "DidRecords": {
+    "RpcDidRecords": {
       "_enum": {
-        "Success": "DidRecordsSuccess",
+        "Success": "RpcDidRecordsSuccess",
         "IdNotFound": "Vec<u8>"
       }
     },
@@ -908,7 +974,7 @@
       "start": "Option<Moment>",
       "period": "CalendarPeriod",
       "remaining": "u32"
-    },
+    },    
     "InstructionStatus": {
       "_enum": {
         "Unknown": "",
@@ -1024,53 +1090,7 @@
     },
     "VenueId": "u64",
     "VenueType": {
-      "_enum": ["Other", "Distribution", "Sto", "Exchange", "OrderBook"]
-    },
-    "OrderBookId": "u64",
-    "OrderId": "u64",
-    "Coin": {
-      "_enum": {
-        "Asset": "Ticker",
-        "Offchain": "Ticker"
-      }
-    },
-    "OrderBook": {
-      "venue_id": "VenueId",
-      "asset": "Ticker",
-      "coin": "Coin"
-    },
-    "FeeDetails": {
-      "_enum": {
-        "OffChain": "",
-        "Onchain": "(Ticker, Balance)"
-      }
-    },
-    "OrderSide": {
-      "_enum": ["Buy", "Sell"]
-    },
-     "Order<AccountId>": {
-      "side": "OrderSide",
-      "order_book_id": "OrderBookId",
-      "asset_portfolio": "PortfolioId",
-      "amount": "Balance",
-      "coin_portfolio": "Option<PortfolioId>",
-      "price": "Option<Balance>",
-      "fee": "FeeDetails",
-      "account_id": "AccountId",
-      "order_id": "OrderId",
-      "timestamp": "Moment"
-    },
-     "SignedOrder<AccountId>": {
-      "signature": "Signature",
-      "order": "Order<AccountId>"
-    },
-     "MatchedOrder<AccountId>": {
-      "order": "SignedOrder<AccountId>",
-      "amount": "Balance"
-    },
-     "SettleOrders<AccountId>": {
-      "main_order": "SignedOrder<AccountId>",
-      "matched_orders": "Vec<MatchedOrder<AccountId>>"
+      "_enum": ["Other", "Distribution", "Sto", "Exchange"]
     },
     "ExtensionAttributes": {
       "usage_fee": "Balance",
@@ -1156,7 +1176,7 @@
       "sender_insufficient_balance": "bool",
       "portfolio_validity_result": "PortfolioValidityResult",
       "asset_frozen": "bool",
-      "statistics_result": "Vec<TransferManagerResult>",
+      "transfer_condition_result": "Vec<TransferConditionResult>",
       "compliance_result": "AssetComplianceResult",
       "result": "bool"
     },
@@ -1167,8 +1187,8 @@
       "sender_insufficient_balance": "bool",
       "result": "bool"
     },
-    "TransferManagerResult": {
-      "tm": "TransferManager",
+    "TransferConditionResult": {
+      "condition": "TransferCondition",
       "result": "bool"
     },
     "AGId": "u32",
@@ -1269,7 +1289,7 @@
             "isOptional": true
           }
         ],
-        "type": "DidRecords"
+        "type": "RpcDidRecords"
       },
       "getDidStatus": {
         "description": "Retrieve status of the DID",
