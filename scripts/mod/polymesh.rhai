@@ -93,6 +93,40 @@ fn get_dids(users) {
 	}
 }
 
+fn dev_users() {
+	return [
+		USER.Alice,
+		USER["Alice//stash"],
+		USER.Bob,
+		USER.Charlie,
+		USER.Dave,
+		USER.Eve,
+	];
+}
+
+fn get_sudo_user() {
+	// Generate common dev users.  This is for the `USER.find_by_account` below.
+	dev_users();
+
+	let key = STORAGE.value("Sudo", "Key");
+	let sudo = USER.find_by_account(key);
+	if sudo == () {
+		// Fallback to Alice.
+		sudo = USER.Alice;
+	}
+	return sudo;
+}
+
+const SUDO_USER = get_sudo_user();
+
+fn get_cdd_provider() {
+	// TODO:
+	let provider = global::SUDO_USER;
+	return provider;
+}
+
+const CDD_PROVIDER = get_cdd_provider();
+
 // Mock CDD for user and make sure they have POLYX.
 fn mock_user(user, balance) {
 	let calls = [];
@@ -116,17 +150,6 @@ fn gen_names(prefix, offset, count) {
 	return names;
 }
 
-fn cdd_providers() {
-	return [
-		USER.Alice,
-		USER["Alice//stash"],
-		USER.Bob,
-		USER.Charlie,
-		USER.Dave,
-		USER.Eve,
-	];
-}
-
 // Create a batch of keys.
 fn create_keys_batch(prefix, offset, count) {
 	return create_keys_batch_with_balance(prefix, offset, count, ());
@@ -144,9 +167,8 @@ fn create_keys_batch_with_balance(prefix, offset, count, balance) {
 		keys += key;
 	}
 	if balance != () {
-		// Alice for CDD.
-		let alice = USER.Alice;
-		//let alice = USER.Eve;
+		// sudo user.
+		let sudo_user = global::SUDO_USER;
 
 		// Query balances.
 		let cur_bals = get_balances(keys);
@@ -160,14 +182,14 @@ fn create_keys_batch_with_balance(prefix, offset, count, balance) {
 				calls += Sudo.sudo(Balances.set_balance(key, balance, 0));
 			}
 			if calls.len() > 200 {
-				results += alice.submit(Utility.batch_optimistic(calls));
+				results += sudo_user.submit(Utility.batch_optimistic(calls));
 				calls = [];
 			}
 		}
 
 		// Final batch if there are still calls to make.
 		if calls.len() > 0 {
-			results += alice.submit(Utility.batch_optimistic(calls));
+			results += sudo_user.submit(Utility.batch_optimistic(calls));
 		}
 		print("CreateKeys: Wait for batch 'set_balance' results");
 		wait_for_in_block(results);
@@ -185,9 +207,8 @@ fn create_users_batch(prefix, offset, count, balance) {
 // Create users.
 fn create_users(names, balance) {
 	let users = [];
-	// Alice for CDD.
-	let alice = USER.Alice;
-	//let alice = USER.Eve;
+	// sudo user.
+	let sudo_user = global::SUDO_USER;
 	
 	// Generate users.
 	for name in names {
@@ -215,14 +236,14 @@ fn create_users(names, balance) {
 			calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
 		}
 		if calls.len() > 200 {
-			results += alice.submit(Utility.batch_optimistic(calls));
+			results += sudo_user.submit(Utility.batch_optimistic(calls));
 			calls = [];
 		}
 	}
 
 	// Final batch if there are still calls to make.
 	if calls.len() > 0 {
-		results += alice.submit(Utility.batch_optimistic(calls));
+		results += sudo_user.submit(Utility.batch_optimistic(calls));
 	}
 	print("CreateUsers: Wait for batch results");
 	wait_for_in_block(results);
