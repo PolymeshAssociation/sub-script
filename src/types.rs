@@ -20,7 +20,7 @@ use sp_runtime::{generic::Era, MultiSignature};
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
-use rhai::{Array, Dynamic, Engine, EvalAltResult, ImmutableString, Map as RMap};
+use rhai::{Array, Blob, Dynamic, Engine, EvalAltResult, ImmutableString, Map as RMap};
 use smartstring::{LazyCompact, SmartString};
 
 use indexmap::map::IndexMap;
@@ -531,6 +531,18 @@ impl TypeMeta {
           for value in values.into_iter() {
             type_ref.encode_value(value, data)?
           }
+        } else if value.is::<Blob>() {
+          let bytes = value.into_blob()?;
+          data.encode(bytes);
+        } else if value.is::<ImmutableString>() {
+          let s = value.into_immutable_string()?;
+          // Maybe Hex-encoded string.
+          let bytes = if s.starts_with("0x") {
+            hex::decode(&s.as_bytes()[2..]).map_err(|e| e.to_string())?
+          } else {
+            hex::decode(s.as_bytes()).map_err(|e| e.to_string())?
+          };
+          data.encode(bytes);
         } else {
           Err(format!("Expected a vector, got {:?}", value.type_id()))?;
         }
