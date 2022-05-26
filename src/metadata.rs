@@ -660,7 +660,13 @@ impl ModuleMetadata {
   ) -> Result<(), Box<EvalAltResult>> {
     let mut map = RMap::new();
     for (name, func) in &self.funcs {
-      map.insert(name.into(), func.add_encode_calls(engine)?);
+      // Can't use `call` in Rhai.
+      let fname = if name == "call" {
+        "Call".into()
+      } else {
+        name.into()
+      };
+      map.insert(fname, func.add_encode_calls(engine)?);
     }
 
     globals.insert(self.name.clone(), map.into());
