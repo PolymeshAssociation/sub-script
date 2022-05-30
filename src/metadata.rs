@@ -164,8 +164,8 @@ impl Metadata {
     lookup.insert("Event", raw_event_ref);
     let raw_error_ref = lookup.insert_meta("RawError", TypeMeta::Enum(mod_errors));
     lookup.insert("DispatchErrorModule", raw_error_ref);
-    let call_ref = lookup.insert_meta("Call", TypeMeta::Enum(mod_calls));
-    lookup.insert("Call", call_ref);
+    // Define 'RuntimeCall' type.
+    lookup.insert_meta("RuntimeCall", TypeMeta::Enum(mod_calls));
 
     Ok(api_md)
   }
@@ -206,8 +206,8 @@ impl Metadata {
     lookup.insert("Event", raw_event_ref);
     let raw_error_ref = lookup.insert_meta("RawError", TypeMeta::Enum(mod_errors));
     lookup.insert("DispatchErrorModule", raw_error_ref);
-    let call_ref = lookup.insert_meta("Call", TypeMeta::Enum(mod_calls));
-    lookup.insert("Call", call_ref);
+    // Define 'RuntimeCall' type.
+    lookup.insert_meta("RuntimeCall", TypeMeta::Enum(mod_calls));
 
     Ok(api_md)
   }
