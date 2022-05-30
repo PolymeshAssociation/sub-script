@@ -782,6 +782,9 @@
         "ClaimOwnership": "(StatClaim, IdentityId, Percentage, Percentage)"
       }
     },
+		"BTreeSet<StatType>": "Vec<StatType>",
+		"BTreeSet<ScopeId>": "Vec<IdentityId>",
+		"BTreeSet<TransferCondition>": "Vec<TransferCondition>",
     "AssetTransferCompliance": {
       "paused": "bool",
       "requirements": "Vec<TransferCondition>"

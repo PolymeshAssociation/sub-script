@@ -8,6 +8,11 @@ if prefix == () {
 	print("Need ticker prefix");
 	return;
 }
+if CLIENT.get_transaction_version() >= 3 {
+	print("Old TransferManager rules not supported on this chain.");
+	return;
+}
+
 let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let supply = ARG.shift();
