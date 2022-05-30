@@ -1071,14 +1071,14 @@ pub fn init_engine(
     }
     Ok(())
   })?;
-  lookup.custom_decode("Balance", move |mut input| {
-    let mut val = Decimal::from(u128::decode(&mut input)?);
-    val /= Decimal::from(balance_scale);
-    Ok(Dynamic::from_decimal(val))
-  })?;
-  lookup.custom_decode("Compact<Balance>", move |mut input| {
-    let num = Compact::<u128>::decode(&mut input)?;
-    let mut val = Decimal::from(num.0);
+  lookup.custom_decode("Balance", move |mut input, is_compact| {
+    let val = if is_compact {
+      Compact::<u128>::decode(&mut input)?.into()
+    } else {
+      u128::decode(&mut input)?
+    };
+    log::debug!("Balance = {}", val);
+    let mut val = Decimal::from(val);
     val /= Decimal::from(balance_scale);
     Ok(Dynamic::from_decimal(val))
   })?;

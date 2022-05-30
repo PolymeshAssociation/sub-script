@@ -202,12 +202,12 @@ impl<'a> Input for BoxedInput<'a> {
 }
 
 #[derive(Clone)]
-pub struct WrapDecodeFn(Arc<dyn Fn(BoxedInput) -> Result<Dynamic, PError> + Send + Sync + 'static>);
+pub struct WrapDecodeFn(Arc<dyn Fn(BoxedInput, bool) -> Result<Dynamic, PError> + Send + Sync + 'static>);
 
 impl WrapDecodeFn {
-  pub fn decode_value<I: Input>(&self, input: &mut I) -> Result<Dynamic, PError> {
+  pub fn decode_value<I: Input>(&self, input: &mut I, is_compact: bool) -> Result<Dynamic, PError> {
     let boxed = BoxedInput::new(input);
-    self.0(boxed)
+    self.0(boxed, is_compact)
   }
 }
 
@@ -258,11 +258,11 @@ impl CustomType {
   pub fn decode_value<I: Input>(
     &self,
     input: &mut I,
-    _is_compact: bool,
+    is_compact: bool,
   ) -> Result<Dynamic, PError> {
     match &self.decode {
-      Some(func) => func.decode_value(input),
-      None => self.type_meta.decode_value(input, false),
+      Some(func) => func.decode_value(input, is_compact),
+      None => self.type_meta.decode_value(input, is_compact),
     }
   }
 }
@@ -1274,7 +1274,7 @@ impl Types {
 
   pub fn custom_decode<F>(&mut self, name: &str, func: F) -> Result<(), Box<EvalAltResult>>
   where
-    F: 'static + Send + Sync + Fn(BoxedInput) -> Result<Dynamic, PError>,
+    F: 'static + Send + Sync + Fn(BoxedInput, bool) -> Result<Dynamic, PError>,
   {
     let func = WrapDecodeFn(Arc::new(func));
     let type_ref = self.parse_type(name)?;
@@ -1355,7 +1355,7 @@ impl TypeLookup {
 
   pub fn custom_decode<F>(&self, name: &str, func: F) -> Result<(), Box<EvalAltResult>>
   where
-    F: 'static + Send + Sync + Fn(BoxedInput) -> Result<Dynamic, PError>,
+    F: 'static + Send + Sync + Fn(BoxedInput, bool) -> Result<Dynamic, PError>,
   {
     let mut t = self.types.write().unwrap();
     t.custom_decode(name, func)
@@ -1424,7 +1424,7 @@ pub fn init_engine(
     data.encode(era);
     Ok(())
   })?;
-  types.custom_decode("Era", |mut input| {
+  types.custom_decode("Era", |mut input, _is_compact| {
     let era = Era::decode(&mut input)?;
     Ok(Dynamic::from(era))
   })?;
@@ -1448,7 +1448,7 @@ pub fn init_engine(
       Ok(())
     },
   )?;
-  types.custom_decode("AccountId", |mut input| {
+  types.custom_decode("AccountId", |mut input, _is_compact| {
     Ok(Dynamic::from(AccountId::decode(&mut input)?))
   })?;
 
@@ -1481,7 +1481,7 @@ pub fn init_engine(
       .register_fn("to_string", |m: &mut Multiaddr| format!("{}", m))
       .register_fn("to_debug", |m: &mut Multiaddr| format!("{:?}", m));
 
-    types.custom_decode("OpaquePeerId", |mut input| {
+    types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
       let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
       let data: Vec<u8> = Decode::decode(&mut &opaque_bytes[..])?;
       let peer = PeerId::from_bytes(&data[..]).map_err(|e| {
@@ -1491,7 +1491,7 @@ pub fn init_engine(
       Ok(Dynamic::from(peer))
     })?;
 
-    types.custom_decode("OpaqueMultiaddr", |mut input| {
+    types.custom_decode("OpaqueMultiaddr", |mut input, _is_compact| {
       let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
       let data: String = Decode::decode(&mut &opaque_bytes[..])?;
       let multiaddr = Multiaddr::try_from(data).map_err(|e| {

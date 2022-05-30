@@ -168,7 +168,7 @@ pub fn init_engine(
     data.encode(value.cast::<IdentityId>());
     Ok(())
   })?;
-  lookup.custom_decode("IdentityId", |mut input| {
+  lookup.custom_decode("IdentityId", |mut input, _is_compact| {
     Ok(Dynamic::from(IdentityId::decode(&mut input)?))
   })?;
   lookup.custom_encode("Ticker", TypeId::of::<ImmutableString>(), |value, data| {
@@ -181,7 +181,7 @@ pub fn init_engine(
     data.encode(value.cast::<Claim>());
     Ok(())
   })?;
-  lookup.custom_decode("Claim", |mut input| {
+  lookup.custom_decode("Claim", |mut input, _is_compact| {
     Ok(Dynamic::from(Claim::decode(&mut input)?))
   })?;
   lookup.custom_encode(
@@ -192,7 +192,7 @@ pub fn init_engine(
       Ok(())
     },
   )?;
-  lookup.custom_decode("InvestorZKProofData", |mut input| {
+  lookup.custom_decode("InvestorZKProofData", |mut input, _is_compact| {
     Ok(Dynamic::from(v1::InvestorZKProofData::decode(&mut input)?))
   })?;
   lookup.custom_encode(
