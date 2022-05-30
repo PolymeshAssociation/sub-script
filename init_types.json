@@ -178,6 +178,25 @@
   "ValidatorIndex": "u32",
   "ValidatorCount": "u32",
   "NominatorIndex": "u32",
+	"OffchainAccuracy": "PerU16",
+	"CompactAssignments": {
+    "votes1": "Vec<(NominatorIndex, ValidatorIndex)>",
+    "votes2": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 1], ValidatorIndex)>",
+    "votes3": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 2], ValidatorIndex)>",
+    "votes4": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 3], ValidatorIndex)>",
+    "votes5": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 4], ValidatorIndex)>",
+    "votes6": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 5], ValidatorIndex)>",
+    "votes7": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 6], ValidatorIndex)>",
+    "votes8": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 7], ValidatorIndex)>",
+    "votes9": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 8], ValidatorIndex)>",
+    "votes10": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 9], ValidatorIndex)>",
+    "votes11": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 10], ValidatorIndex)>",
+    "votes12": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 11], ValidatorIndex)>",
+    "votes13": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 12], ValidatorIndex)>",
+    "votes14": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 13], ValidatorIndex)>",
+    "votes15": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 14], ValidatorIndex)>",
+    "votes16": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 15], ValidatorIndex)>"
+	},
   "MembershipProof": {
     "session": "SessionIndex",
     "trie_nodes": "Vec<Vec<u8>>",
@@ -236,7 +255,10 @@
 		}
 	},
 	"Signature": "MultiSignature",
+	"AuthorityId": "[u8; 32]",
+	"AuthorityWeight": "u64",
   "<AuthorityId as RuntimeAppPublic>::Signature": "[u8; 64]",
+	"AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
   "Call": "RuntimeCall",
   "<T as Config>::Call": "Call",
   "<T as frame_system::Config>::Call": "Call"

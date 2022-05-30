@@ -25,7 +25,7 @@ use dashmap::DashMap;
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
-use rhai::serde::from_dynamic;
+use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult, Map as RMap, INT};
 
 use crate::metadata::{EncodedCall, Metadata};
@@ -176,27 +176,37 @@ impl Block {
     self.extrinsics.iter().position(|xt| xt == xthex)
   }
 
+  fn decode_xthex(&self, xthex: &String) -> Option<Dynamic> {
+    self.call_ty
+      .as_ref()
+      .map_or_else(
+        || Some(Dynamic::from(xthex.clone())),
+        |call_ty| {
+          if xthex.starts_with("0x") {
+            hex::decode(&xthex[2..]).ok()
+              .map(|xt| {
+                ExtrinsicV4::decode_call(call_ty, &mut &xt[..])
+                  .map_err(|e| eprintln!("Call decode failed: {:?}", e))
+                  .ok()
+              })
+              .flatten()
+          } else {
+            None
+          }
+        }
+      )
+  }
+
+  pub fn extrinsics(&mut self) -> Dynamic {
+    Dynamic::from(self.extrinsics.iter().filter_map(|xthex| {
+      self.decode_xthex(xthex)
+    }).collect::<Vec<_>>())
+  }
+
   pub fn extrinsics_filtered(&mut self, xthex_partial: &str) -> Dynamic {
     Dynamic::from(self.extrinsics.iter().filter_map(|xthex| {
       if xthex.contains(xthex_partial) {
-        self.call_ty
-          .as_ref()
-          .map_or_else(
-            || Some(Dynamic::from(xthex.clone())),
-            |call_ty| {
-              if xthex.starts_with("0x") {
-                hex::decode(&xthex[2..]).ok()
-                  .map(|xt| {
-                    ExtrinsicV4::decode_call(call_ty, &mut &xt[..])
-                      .map_err(|e| eprintln!("Call decode failed: {:?}", e))
-                      .ok()
-                  })
-                  .flatten()
-              } else {
-                None
-              }
-            }
-          )
+        self.decode_xthex(xthex)
       } else {
         None
       }
@@ -322,9 +332,9 @@ impl InnerClient {
     rpc: RpcHandler,
     lookup: &TypeLookup,
   ) -> Result<Arc<Self>, Box<EvalAltResult>> {
-    let runtime_version = Self::rpc_get_runtime_version(&rpc)?;
+    let runtime_version = Self::rpc_get_runtime_version(&rpc, None)?;
     let genesis_hash = Self::rpc_get_genesis_hash(&rpc)?;
-    let runtime_metadata = Self::rpc_get_runtime_metadata(&rpc)?;
+    let runtime_metadata = Self::rpc_get_runtime_metadata(&rpc, None)?;
     let metadata = Metadata::from_runtime_metadata(runtime_metadata, lookup)?;
 
     let event_records = lookup.resolve("EventRecords");
@@ -343,16 +353,20 @@ impl InnerClient {
     }))
   }
 
-  /// Get runtime version from rpc node.
-  fn rpc_get_runtime_version(rpc: &RpcHandler) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+  // Get runtime version from rpc node.
+  fn rpc_get_runtime_version(rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+    let params = match hash {
+      Some(hash) => json!([hash]),
+      None => Value::Null,
+    };
     Ok(
       rpc
-        .call_method("state_getRuntimeVersion", Value::Null)?
+        .call_method("state_getRuntimeVersion", params)?
         .ok_or_else(|| format!("Failed to get RuntimeVersion from node."))?,
     )
   }
 
-  /// Get block hash from rpc node.
+  // Get block hash from rpc node.
   fn rpc_get_block_hash(rpc: &RpcHandler, block_number: u64) -> Result<Option<BlockHash>, Box<EvalAltResult>> {
     Ok(
       rpc
@@ -360,17 +374,21 @@ impl InnerClient {
     )
   }
 
-  /// Get genesis hash from rpc node.
+  // Get genesis hash from rpc node.
   fn rpc_get_genesis_hash(rpc: &RpcHandler) -> Result<BlockHash, Box<EvalAltResult>> {
     Ok(Self::rpc_get_block_hash(rpc, 0)?.ok_or_else(|| format!("Failed to get genesis hash from node."))?)
   }
 
-  /// Get metadata from rpc node.
+  // Get metadata from rpc node.
   fn rpc_get_runtime_metadata(
-    rpc: &RpcHandler,
+    rpc: &RpcHandler, hash: Option<BlockHash>,
   ) -> Result<RuntimeMetadataPrefixed, Box<EvalAltResult>> {
+    let params = match hash {
+      Some(hash) => json!([hash]),
+      None => json!([]),
+    };
     let hex: String = rpc
-      .call_method("state_getMetadata", json!([]))?
+      .call_method("state_getMetadata", params)?
       .ok_or_else(|| format!("Failed to get Metadata from node."))?;
 
     let bytes = Vec::from_hex(&hex[2..]).map_err(|e| e.to_string())?;
@@ -405,6 +423,11 @@ impl InnerClient {
   pub fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>, Box<EvalAltResult>> {
     let hash = self.get_block_hash(block_number)?;
     self.get_block(hash)
+  }
+
+  /// Get block RuntimeVersion.
+  pub fn get_block_runtime_version(&self, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+    Self::rpc_get_runtime_version(&self.rpc, hash)
   }
 
   pub fn get_block(&self, hash: Option<BlockHash>) -> Result<Option<Block>, Box<EvalAltResult>> {
@@ -682,12 +705,20 @@ impl Client {
     self.inner.get_block_hash(block_number)
   }
 
+  pub fn get_block_runtime_version(&self, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+    self.inner.get_block_runtime_version(hash)
+  }
+
   pub fn get_block(&self, hash: Option<BlockHash>) -> Result<Option<Block>, Box<EvalAltResult>> {
     self.inner.get_block(hash)
   }
 
   pub fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>, Box<EvalAltResult>> {
     self.inner.get_block_by_number(block_number)
+  }
+
+  pub fn get_block_events(&self, hash: Option<BlockHash>) -> Result<Dynamic, Box<EvalAltResult>> {
+    self.inner.get_block_events(hash)
   }
 
   pub fn get_storage_keys_paged(
@@ -996,6 +1027,12 @@ pub fn init_engine(
         None => Ok(Dynamic::UNIT),
       }
     })
+    .register_result_fn("get_block_events", |client: &mut Client, hash: Dynamic| {
+      client.get_block_events(hash.try_cast::<BlockHash>())
+    })
+    .register_result_fn("get_block_runtime_version", |client: &mut Client, hash: Dynamic| {
+      to_dynamic(client.get_block_runtime_version(hash.try_cast::<BlockHash>())?)
+    })
     .register_result_fn("get_block_by_number", |client: &mut Client, num: i64| {
       match client.get_block_by_number(num as u64)? {
         Some(block) => Ok(Dynamic::from(block)),
@@ -1007,6 +1044,7 @@ pub fn init_engine(
     .register_type_with_name::<BlockHash>("BlockHash")
     .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())
     .register_type_with_name::<Block>("Block")
+    .register_get("extrinsics", Block::extrinsics)
     .register_fn("extrinsics_filtered", Block::extrinsics_filtered)
     .register_get("parent", Block::parent)
     .register_get("block_number", Block::block_number)
