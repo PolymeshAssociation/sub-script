@@ -36,6 +36,14 @@ use crate::users::{AccountId, User};
 pub type TxHash = H256;
 pub type BlockHash = H256;
 
+pub fn hash_from_dynamic(val: Dynamic) -> Option<BlockHash> {
+  if val.is::<BlockHash>() {
+    val.try_cast::<BlockHash>()
+  } else {
+    from_dynamic(&val).ok()
+  }
+}
+
 pub type GenericAddress = sp_runtime::MultiAddress<AccountId, ()>;
 
 pub type AdditionalSigned = (u32, u32, BlockHash, BlockHash, (), (), ());
@@ -1022,16 +1030,16 @@ pub fn init_engine(
       }
     })
     .register_result_fn("get_block", |client: &mut Client, hash: Dynamic| {
-      match client.get_block(hash.try_cast::<BlockHash>())? {
+      match client.get_block(hash_from_dynamic(hash))? {
         Some(block) => Ok(Dynamic::from(block)),
         None => Ok(Dynamic::UNIT),
       }
     })
     .register_result_fn("get_block_events", |client: &mut Client, hash: Dynamic| {
-      client.get_block_events(hash.try_cast::<BlockHash>())
+      client.get_block_events(hash_from_dynamic(hash))
     })
     .register_result_fn("get_block_runtime_version", |client: &mut Client, hash: Dynamic| {
-      to_dynamic(client.get_block_runtime_version(hash.try_cast::<BlockHash>())?)
+      to_dynamic(client.get_block_runtime_version(hash_from_dynamic(hash))?)
     })
     .register_result_fn("get_block_by_number", |client: &mut Client, num: i64| {
       match client.get_block_by_number(num as u64)? {

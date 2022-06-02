@@ -2,12 +2,14 @@ use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex};
 use std::thread;
 
+use sp_version::RuntimeVersion;
+
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{from_value, json, Value};
 
 use dashmap::DashMap;
 
-use rhai::serde::from_dynamic;
+use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult};
 
 use ws::{Factory, Handler, Message, WebSocket};
@@ -658,7 +660,17 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
     )
     .register_result_fn(
       "get_response",
-      |client: &mut RpcHandler, token: RequestToken| client.get_response::<Dynamic>(token),
+      |client: &mut RpcHandler, token: RequestToken| {
+        let res: Option<Dynamic> = client.get_response::<Dynamic>(token)?;
+        Ok(res.unwrap_or(Dynamic::UNIT))
+      },
+    )
+    .register_result_fn(
+      "get_runtime_version",
+      |client: &mut RpcHandler, token: RequestToken| {
+        let res: Option<RuntimeVersion> = client.get_response::<RuntimeVersion>(token)?;
+        Ok(res.and_then(|rt| to_dynamic(rt).ok()).unwrap_or(Dynamic::UNIT))
+      },
     )
     .register_result_fn(
       "get_update",
