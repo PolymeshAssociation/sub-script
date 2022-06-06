@@ -202,7 +202,7 @@ impl SharedEngine {
       .cloned()
       .map(|arg| Dynamic::from(arg))
       .collect::<Vec<Dynamic>>();
-  
+
     self.new_scope(args.into())
   }
 }
@@ -219,18 +219,26 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   let rpc_manager = rpc::init_engine(&mut engine)?;
   let rpc = rpc_manager.get_client(&opts.url)?;
 
-  let lookup = types::init_engine(&mut engine, &opts)?;
+  let types_registry = types::init_engine(&mut engine, &opts)?;
+  client::init_types_registry(&types_registry)?;
+  metadata::init_types_registry(&types_registry)?;
+  plugins::init_types_registry(&types_registry)?;
+
+  // Get metadata/types for current block.
+  let lookup = types_registry.get_block_types(&rpc, None)?;
+
   let client = client::init_engine(&rpc, &mut engine, &lookup)?;
   let users = users::init_engine(&mut engine, &client);
-  let metadata = metadata::init_engine(&mut engine, &mut globals, &client, &lookup)?;
+  let metadata = metadata::init_engine(&mut engine, &mut globals, &client)?;
   let storage = storage::init_engine(&mut engine, &client, &metadata);
-  plugins::init_engine(&mut engine, &mut globals, &client, &lookup)?;
+  plugins::init_engine(&mut engine, &mut globals, &client)?;
 
   // Setup globals for easy access.
   globals.insert("CLIENT".into(), Dynamic::from(client));
   globals.insert("RPC_MANAGER".into(), Dynamic::from(rpc_manager));
   globals.insert("RPC".into(), Dynamic::from(rpc));
   globals.insert("Types".into(), Dynamic::from(lookup));
+  globals.insert("TypesRegistry".into(), Dynamic::from(types_registry));
   globals.insert("STORAGE".into(), Dynamic::from(storage));
   globals.insert("USER".into(), Dynamic::from(users));
 

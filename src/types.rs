@@ -25,9 +25,14 @@ use smartstring::{LazyCompact, SmartString};
 
 use indexmap::map::IndexMap;
 
+use dashmap::DashMap;
+
 use super::engine::EngineOptions;
 use super::metadata::EncodedArgs;
+use super::client::BlockHash;
+use super::rpc::RpcHandler;
 use super::users::{AccountId, SharedUser};
+use super::metadata::Metadata;
 
 #[cfg(feature = "v14")]
 pub fn is_type_compact(ty: &Type<PortableForm>) -> bool {
@@ -840,13 +845,23 @@ impl TypeMeta {
 #[derive(Clone)]
 pub struct Types {
   types: IndexMap<String, TypeRef>,
+  metadata: Option<Metadata>,
 }
 
 impl Types {
   pub fn new() -> Self {
     Self {
       types: IndexMap::new(),
+      metadata: None,
     }
+  }
+
+  pub fn set_metadata(&mut self, metadata: Metadata) {
+    self.metadata = Some(metadata);
+  }
+
+  pub fn get_metadata(&self) -> Option<Metadata> {
+    self.metadata.as_ref().cloned()
   }
 
   pub fn load_schema(&mut self, filename: &str) -> Result<(), Box<EvalAltResult>> {
@@ -1301,6 +1316,10 @@ impl TypeLookup {
     }
   }
 
+  pub fn get_metadata(&self) -> Option<Metadata> {
+    self.types.read().unwrap().get_metadata()
+  }
+
   pub fn parse_named_type(&self, name: &str, def: &str) -> Result<TypeRef, Box<EvalAltResult>> {
     let mut t = self.types.write().unwrap();
     t.parse_named_type(name, def)
@@ -1362,11 +1381,87 @@ impl TypeLookup {
   }
 }
 
+pub struct InitRegistryFn(
+  Box<dyn Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>> + Send + Sync + 'static>,
+);
+
+impl InitRegistryFn {
+  pub fn init_types(
+    &self,
+    types: &mut Types,
+    rpc: &RpcHandler,
+    hash: Option<BlockHash>,
+  ) -> Result<(), Box<EvalAltResult>> {
+    self.0(types, rpc, hash)
+  }
+}
+
+pub struct InnerTypesRegistry {
+  block_types: DashMap<Option<BlockHash>, TypeLookup>,
+  initializers: Vec<InitRegistryFn>,
+}
+
+impl InnerTypesRegistry {
+  pub fn new() -> Self {
+    Self {
+      block_types: DashMap::new(),
+      initializers: Vec::new(),
+    }
+  }
+
+  fn build_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    let mut types = Types::new();
+    for init in &self.initializers {
+      init.init_types(&mut types, rpc, hash)?;
+    }
+    let lookup = TypeLookup::from_types(types);
+    Ok(lookup)
+  }
+
+  pub fn get_block_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    use dashmap::mapref::entry::Entry;
+    Ok(match self.block_types.entry(hash) {
+      Entry::Occupied(entry) => entry.get().clone(),
+      Entry::Vacant(entry) => {
+        // Need to build/initialize new Types.
+        let lookup = self.build_types(rpc, hash)?;
+        entry.insert(lookup.clone());
+        lookup
+      },
+    })
+  }
+
+  pub fn add_init(&mut self, func: InitRegistryFn) {
+    self.initializers.push(func);
+  }
+}
+
+#[derive(Clone)]
+pub struct TypesRegistry(Arc<RwLock<InnerTypesRegistry>>);
+
+impl TypesRegistry {
+  pub fn new() -> Self {
+    Self(Arc::new(RwLock::new(InnerTypesRegistry::new())))
+  }
+
+  pub fn get_block_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    self.0.write().unwrap().get_block_types(rpc, hash)
+  }
+
+  pub fn add_init<F>(&self, func: F)
+  where
+    F: 'static + Send + Sync + Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>>,
+  {
+    self.0.write().unwrap().add_init(InitRegistryFn(Box::new(func)))
+  }
+}
+
 pub fn init_engine(
   engine: &mut Engine,
   opts: &EngineOptions,
-) -> Result<TypeLookup, Box<EvalAltResult>> {
+) -> Result<TypesRegistry, Box<EvalAltResult>> {
   engine
+    .register_type_with_name::<TypeLookup>("TypesRegistry")
     .register_type_with_name::<TypeLookup>("TypeLookup")
     .register_fn("dump_types", TypeLookup::dump_types)
     .register_fn("dump_unresolved", TypeLookup::dump_unresolved)
@@ -1396,78 +1491,109 @@ pub fn init_engine(
     })
     .register_fn("encode", |era: &mut Era| era.encode())
     .register_fn("to_string", |era: &mut Era| format!("{:?}", era));
-  let mut types = Types::new();
 
-  // Primitive types.
-  types.insert_meta("u8", TypeMeta::Integer(1, false));
-  types.insert_meta("u16", TypeMeta::Integer(2, false));
-  types.insert_meta("u32", TypeMeta::Integer(4, false));
-  types.insert_meta("u64", TypeMeta::Integer(8, false));
-  types.insert_meta("u128", TypeMeta::Integer(16, false));
-  types.insert_meta("i8", TypeMeta::Integer(1, true));
-  types.insert_meta("i16", TypeMeta::Integer(2, true));
-  types.insert_meta("i32", TypeMeta::Integer(4, true));
-  types.insert_meta("i64", TypeMeta::Integer(8, true));
-  types.insert_meta("i128", TypeMeta::Integer(16, true));
-  types.insert_meta("bool", TypeMeta::Bool);
-  types.insert_meta("Text", TypeMeta::String);
-  types.insert_meta("Option<bool>", TypeMeta::OptionBool);
+  let types_registry = TypesRegistry::new();
 
-  // Load standard substrate types.
-  types.load_schema(&opts.substrate_types)?;
-  // Load custom chain types.
-  types.load_schema(&opts.custom_types)?;
+  let substrate_types = opts.substrate_types.clone();
+  let custom_types = opts.custom_types.clone();
+  types_registry.add_init(move |types, _rpc, _hash| {
+    // Primitive types.
+    types.insert_meta("u8", TypeMeta::Integer(1, false));
+    types.insert_meta("u16", TypeMeta::Integer(2, false));
+    types.insert_meta("u32", TypeMeta::Integer(4, false));
+    types.insert_meta("u64", TypeMeta::Integer(8, false));
+    types.insert_meta("u128", TypeMeta::Integer(16, false));
+    types.insert_meta("i8", TypeMeta::Integer(1, true));
+    types.insert_meta("i16", TypeMeta::Integer(2, true));
+    types.insert_meta("i32", TypeMeta::Integer(4, true));
+    types.insert_meta("i64", TypeMeta::Integer(8, true));
+    types.insert_meta("i128", TypeMeta::Integer(16, true));
+    types.insert_meta("bool", TypeMeta::Bool);
+    types.insert_meta("Text", TypeMeta::String);
+    types.insert_meta("Option<bool>", TypeMeta::OptionBool);
 
-  // Custom encodings.
-  types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
-    let era = value.cast::<Era>();
-    data.encode(era);
-    Ok(())
-  })?;
-  types.custom_decode("Era", |mut input, _is_compact| {
-    let era = Era::decode(&mut input)?;
-    Ok(Dynamic::from(era))
-  })?;
+    // Load standard substrate types.
+    types.load_schema(&substrate_types)?;
+    // Load custom chain types.
+    types.load_schema(&custom_types)?;
 
-  types.custom_encode("AccountId", TypeId::of::<SharedUser>(), |value, data| {
-    let user = value.cast::<SharedUser>();
-    data.encode(user.public());
-    Ok(())
-  })?;
-  types.custom_encode("AccountId", TypeId::of::<AccountId>(), |value, data| {
-    data.encode(value.cast::<AccountId>());
-    Ok(())
-  })?;
-  types.custom_encode(
-    "AccountId",
-    TypeId::of::<ImmutableString>(),
-    |value, data| {
-      let val = value.cast::<ImmutableString>();
-      let acc = AccountId::from_string(&val).map_err(|e| format!("{:?}", e))?;
-      data.encode(acc);
+    // Custom encodings.
+    types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
+      let era = value.cast::<Era>();
+      data.encode(era);
       Ok(())
-    },
-  )?;
-  types.custom_decode("AccountId", |mut input, _is_compact| {
-    Ok(Dynamic::from(AccountId::decode(&mut input)?))
-  })?;
+    })?;
+    types.custom_decode("Era", |mut input, _is_compact| {
+      let era = Era::decode(&mut input)?;
+      Ok(Dynamic::from(era))
+    })?;
 
-  types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
-    let user = value.cast::<SharedUser>();
-    // Encode variant idx.
-    data.encode(0u8); // MultiAddress::Id
-    data.encode(user.public());
-    Ok(())
-  })?;
-
-  types.custom_encode(
-    "MultiSignature",
-    TypeId::of::<MultiSignature>(),
-    |value, data| {
-      data.encode(value.cast::<MultiSignature>());
+    types.custom_encode("AccountId", TypeId::of::<SharedUser>(), |value, data| {
+      let user = value.cast::<SharedUser>();
+      data.encode(user.public());
       Ok(())
-    },
-  )?;
+    })?;
+    types.custom_encode("AccountId", TypeId::of::<AccountId>(), |value, data| {
+      data.encode(value.cast::<AccountId>());
+      Ok(())
+    })?;
+    types.custom_encode(
+      "AccountId",
+      TypeId::of::<ImmutableString>(),
+      |value, data| {
+        let val = value.cast::<ImmutableString>();
+        let acc = AccountId::from_string(&val).map_err(|e| format!("{:?}", e))?;
+        data.encode(acc);
+        Ok(())
+      },
+    )?;
+    types.custom_decode("AccountId", |mut input, _is_compact| {
+      Ok(Dynamic::from(AccountId::decode(&mut input)?))
+    })?;
+
+    types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
+      let user = value.cast::<SharedUser>();
+      // Encode variant idx.
+      data.encode(0u8); // MultiAddress::Id
+      data.encode(user.public());
+      Ok(())
+    })?;
+
+    types.custom_encode(
+      "MultiSignature",
+      TypeId::of::<MultiSignature>(),
+      |value, data| {
+        data.encode(value.cast::<MultiSignature>());
+        Ok(())
+      },
+    )?;
+
+    #[cfg(feature = "libp2p")]
+    {
+      use libp2p_core::{PeerId, Multiaddr};
+
+      types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
+        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
+        let data: Vec<u8> = Decode::decode(&mut &opaque_bytes[..])?;
+        let peer = PeerId::from_bytes(&data[..]).map_err(|e| {
+          eprintln!("Failed to decode PeerId: {:?}", e);
+          "Failed to decode PeerId"
+        })?;
+        Ok(Dynamic::from(peer))
+      })?;
+
+      types.custom_decode("OpaqueMultiaddr", |mut input, _is_compact| {
+        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
+        let data: String = Decode::decode(&mut &opaque_bytes[..])?;
+        let multiaddr = Multiaddr::try_from(data).map_err(|e| {
+          eprintln!("Failed to decode Multiaddr: {:?}", e);
+          "Failed to decode Multiaddr"
+        })?;
+        Ok(Dynamic::from(multiaddr))
+      })?;
+    }
+    Ok(())
+  });
 
   #[cfg(feature = "libp2p")]
   {
@@ -1480,28 +1606,7 @@ pub fn init_engine(
       .register_type_with_name::<Multiaddr>("Multiaddr")
       .register_fn("to_string", |m: &mut Multiaddr| format!("{}", m))
       .register_fn("to_debug", |m: &mut Multiaddr| format!("{:?}", m));
-
-    types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
-      let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
-      let data: Vec<u8> = Decode::decode(&mut &opaque_bytes[..])?;
-      let peer = PeerId::from_bytes(&data[..]).map_err(|e| {
-        eprintln!("Failed to decode PeerId: {:?}", e);
-        "Failed to decode PeerId"
-      })?;
-      Ok(Dynamic::from(peer))
-    })?;
-
-    types.custom_decode("OpaqueMultiaddr", |mut input, _is_compact| {
-      let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
-      let data: String = Decode::decode(&mut &opaque_bytes[..])?;
-      let multiaddr = Multiaddr::try_from(data).map_err(|e| {
-        eprintln!("Failed to decode Multiaddr: {:?}", e);
-        "Failed to decode Multiaddr"
-      })?;
-      Ok(Dynamic::from(multiaddr))
-    })?;
   }
 
-  let lookup = TypeLookup::from_types(types);
-  Ok(lookup)
+  Ok(types_registry)
 }

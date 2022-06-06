@@ -2,9 +2,6 @@ use std::any::TypeId;
 use std::convert::TryFrom;
 use std::sync::{Arc, RwLock};
 
-use hex::FromHex;
-
-use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::{Compact, Decode, Encode};
 use sp_core::{
   crypto::{set_default_ss58_version, Ss58AddressFormat},
@@ -30,7 +27,7 @@ use rhai::{Dynamic, Engine, EvalAltResult, Map as RMap, INT};
 
 use crate::metadata::{EncodedCall, Metadata};
 use crate::rpc::*;
-use crate::types::{TypeLookup, TypeRef};
+use crate::types::{TypesRegistry, TypeLookup, TypeRef};
 use crate::users::{AccountId, User};
 
 pub type TxHash = H256;
@@ -342,8 +339,7 @@ impl InnerClient {
   ) -> Result<Arc<Self>, Box<EvalAltResult>> {
     let runtime_version = Self::rpc_get_runtime_version(&rpc, None)?;
     let genesis_hash = Self::rpc_get_genesis_hash(&rpc)?;
-    let runtime_metadata = Self::rpc_get_runtime_metadata(&rpc, None)?;
-    let metadata = Metadata::from_runtime_metadata(runtime_metadata, lookup)?;
+    let metadata = lookup.get_metadata().expect("Failed to load chain metadata");
 
     let event_records = lookup.resolve("EventRecords");
     let account_info = lookup.resolve("AccountInfo");
@@ -385,22 +381,6 @@ impl InnerClient {
   // Get genesis hash from rpc node.
   fn rpc_get_genesis_hash(rpc: &RpcHandler) -> Result<BlockHash, Box<EvalAltResult>> {
     Ok(Self::rpc_get_block_hash(rpc, 0)?.ok_or_else(|| format!("Failed to get genesis hash from node."))?)
-  }
-
-  // Get metadata from rpc node.
-  fn rpc_get_runtime_metadata(
-    rpc: &RpcHandler, hash: Option<BlockHash>,
-  ) -> Result<RuntimeMetadataPrefixed, Box<EvalAltResult>> {
-    let params = match hash {
-      Some(hash) => json!([hash]),
-      None => json!([]),
-    };
-    let hex: String = rpc
-      .call_method("state_getMetadata", params)?
-      .ok_or_else(|| format!("Failed to get Metadata from node."))?;
-
-    let bytes = Vec::from_hex(&hex[2..]).map_err(|e| e.to_string())?;
-    Ok(RuntimeMetadataPrefixed::decode(&mut bytes.as_slice()).map_err(|e| e.to_string())?)
   }
 
   pub fn get_transaction_version(&self) -> i64 {
@@ -1016,6 +996,68 @@ impl ExtrinsicCallResult {
   }
 }
 
+pub fn init_types_registry(
+  types_registry: &TypesRegistry,
+) -> Result<(), Box<EvalAltResult>> {
+  types_registry.add_init(|types, rpc, _hash| {
+    // Get Chain properties.
+    let chain_props: Option<ChainProperties> = rpc.call_method("system_properties", json!([]))?;
+    // Set default ss58 format.
+    let ss58_format = chain_props
+      .as_ref()
+      .and_then(|p| Ss58AddressFormat::try_from(p.ss58_format).ok());
+    if let Some(ss58_format) = ss58_format {
+      set_default_ss58_version(ss58_format);
+    }
+
+    // Get the `tokenDecimals` value from the chain properties.
+    let token_decimals = chain_props.as_ref().map(|p| p.token_decimals).unwrap_or(0);
+    let balance_scale = 10u128.pow(token_decimals);
+    log::info!(
+      "token_deciamls: {:?}, balance_scale={:?}",
+      token_decimals,
+      balance_scale
+    );
+    types.custom_encode("Balance", TypeId::of::<INT>(), move |value, data| {
+      let mut val = value.cast::<INT>() as u128;
+      val *= balance_scale;
+      if data.is_compact() {
+        data.encode(Compact::<u128>(val));
+      } else {
+        data.encode(val);
+      }
+      Ok(())
+    })?;
+    types.custom_encode("Balance", TypeId::of::<Decimal>(), move |value, data| {
+      let mut dec = value.cast::<Decimal>();
+      dec *= Decimal::from(balance_scale);
+      let val = dec
+        .to_u128()
+        .ok_or_else(|| format!("Expected unsigned integer"))?;
+      if data.is_compact() {
+        data.encode(Compact::<u128>(val));
+      } else {
+        data.encode(val);
+      }
+      Ok(())
+    })?;
+    types.custom_decode("Balance", move |mut input, is_compact| {
+      let val = if is_compact {
+        Compact::<u128>::decode(&mut input)?.into()
+      } else {
+        u128::decode(&mut input)?
+      };
+      log::debug!("Balance = {}", val);
+      let mut val = Decimal::from(val);
+      val /= Decimal::from(balance_scale);
+      Ok(Dynamic::from_decimal(val))
+    })?;
+    Ok(())
+  });
+
+  Ok(())
+}
+
 pub fn init_engine(
   rpc: &RpcHandler,
   engine: &mut Engine,
@@ -1075,59 +1117,6 @@ pub fn init_engine(
     .register_fn("to_string", ExtrinsicCallResult::to_string);
 
   let client = Client::connect(rpc.clone(), lookup)?;
-
-  // Get Chain properties.
-  let chain_props = client.get_chain_properties()?;
-  // Set default ss58 format.
-  let ss58_format = chain_props
-    .as_ref()
-    .and_then(|p| Ss58AddressFormat::try_from(p.ss58_format).ok());
-  if let Some(ss58_format) = ss58_format {
-    set_default_ss58_version(ss58_format);
-  }
-
-  // Get the `tokenDecimals` value from the chain properties.
-  let token_decimals = chain_props.as_ref().map(|p| p.token_decimals).unwrap_or(0);
-  let balance_scale = 10u128.pow(token_decimals);
-  log::info!(
-    "token_deciamls: {:?}, balance_scale={:?}",
-    token_decimals,
-    balance_scale
-  );
-  lookup.custom_encode("Balance", TypeId::of::<INT>(), move |value, data| {
-    let mut val = value.cast::<INT>() as u128;
-    val *= balance_scale;
-    if data.is_compact() {
-      data.encode(Compact::<u128>(val));
-    } else {
-      data.encode(val);
-    }
-    Ok(())
-  })?;
-  lookup.custom_encode("Balance", TypeId::of::<Decimal>(), move |value, data| {
-    let mut dec = value.cast::<Decimal>();
-    dec *= Decimal::from(balance_scale);
-    let val = dec
-      .to_u128()
-      .ok_or_else(|| format!("Expected unsigned integer"))?;
-    if data.is_compact() {
-      data.encode(Compact::<u128>(val));
-    } else {
-      data.encode(val);
-    }
-    Ok(())
-  })?;
-  lookup.custom_decode("Balance", move |mut input, is_compact| {
-    let val = if is_compact {
-      Compact::<u128>::decode(&mut input)?.into()
-    } else {
-      u128::decode(&mut input)?
-    };
-    log::debug!("Balance = {}", val);
-    let mut val = Decimal::from(val);
-    val /= Decimal::from(balance_scale);
-    Ok(Dynamic::from_decimal(val))
-  })?;
 
   Ok(client)
 }

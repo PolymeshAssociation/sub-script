@@ -2,6 +2,8 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
+use hex::FromHex;
+
 use frame_metadata::{
   RuntimeMetadata, RuntimeMetadataPrefixed,
 };
@@ -23,14 +25,17 @@ use scale_info::{
   TypeDef,
   Variant, Field,
 };
-use parity_scale_codec::{Encode, Output};
+use parity_scale_codec::{Decode, Encode, Output};
 use sp_core::{self, storage::StorageKey};
+
+use serde_json::json;
 
 use rhai::plugin::NativeCallContext;
 use rhai::{Dynamic, Engine, EvalAltResult, FnPtr, Map as RMap, INT};
 
-use crate::client::Client;
-use crate::types::{EnumVariants, TypeLookup, TypeMeta, TypeRef};
+use crate::client::{Client, BlockHash};
+use crate::rpc::*;
+use crate::types::{EnumVariants, TypesRegistry, Types, TypeMeta, TypeRef};
 
 #[cfg(feature = "v14")]
 use crate::types::{get_type_name, is_type_compact};
@@ -55,9 +60,25 @@ pub struct Metadata {
 }
 
 impl Metadata {
+  // Get metadata from rpc node.
+  pub fn from_rpc_get_runtime_metadata(
+    rpc: &RpcHandler, hash: Option<BlockHash>,
+  ) -> Result<RuntimeMetadataPrefixed, Box<EvalAltResult>> {
+    let params = match hash {
+      Some(hash) => json!([hash]),
+      None => json!([]),
+    };
+    let hex: String = rpc
+      .call_method("state_getMetadata", params)?
+      .ok_or_else(|| format!("Failed to get Metadata from node."))?;
+
+    let bytes = Vec::from_hex(&hex[2..]).map_err(|e| e.to_string())?;
+    Ok(RuntimeMetadataPrefixed::decode(&mut bytes.as_slice()).map_err(|e| e.to_string())?)
+  }
+
   pub fn from_runtime_metadata(
     metadata_prefixed: RuntimeMetadataPrefixed,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     // Get versioned metadata.
     let md = match metadata_prefixed.1 {
@@ -95,7 +116,7 @@ impl Metadata {
   #[cfg(feature = "v12")]
   fn from_v12_metadata(
     md: frame_metadata::v12::RuntimeMetadataV12,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mut api_md = Self {
       modules: HashMap::new(),
@@ -134,7 +155,7 @@ impl Metadata {
   #[cfg(feature = "v13")]
   fn from_v13_metadata(
     md: frame_metadata::v13::RuntimeMetadataV13,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mut api_md = Self {
       modules: HashMap::new(),
@@ -173,7 +194,7 @@ impl Metadata {
   #[cfg(feature = "v14")]
   fn from_v14_metadata(
     md: frame_metadata::v14::RuntimeMetadataV14,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mut api_md = Self {
       modules: HashMap::new(),
@@ -285,7 +306,7 @@ impl ModuleMetadata {
   #[cfg(feature = "v12")]
   fn from_v12_meta(
     md: &frame_metadata::v12::ModuleMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mod_idx = md.index;
     let mod_name = decode_meta(&md.name)?;
@@ -395,7 +416,7 @@ impl ModuleMetadata {
   #[cfg(feature = "v13")]
   fn from_v13_meta(
     md: &frame_metadata::v13::ModuleMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mod_idx = md.index;
     let mod_name = decode_meta(&md.name)?;
@@ -507,7 +528,7 @@ impl ModuleMetadata {
   fn from_v14_meta(
     md: &frame_metadata::v14::PalletMetadata<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let mod_idx = md.index;
     let mod_name = &md.name;
@@ -736,7 +757,7 @@ pub struct NamedType {
 }
 
 impl NamedType {
-  pub fn new(name: &str, lookup: &TypeLookup) -> Result<Self, Box<EvalAltResult>> {
+  pub fn new(name: &str, lookup: &mut Types) -> Result<Self, Box<EvalAltResult>> {
     let ty_meta = lookup.parse_type(name)?;
     let named = Self {
       name: name.into(),
@@ -747,7 +768,7 @@ impl NamedType {
   }
 
   #[cfg(feature = "v14")]
-  pub fn new_type(ty_id: u32, types: &PortableRegistry, lookup: &TypeLookup) -> Result<Self, Box<EvalAltResult>> {
+  pub fn new_type(ty_id: u32, types: &PortableRegistry, lookup: &mut Types) -> Result<Self, Box<EvalAltResult>> {
     let ty = types.resolve(ty_id)
       .ok_or_else(|| format!("Failed to resolve type."))?;
     let name = get_type_name(ty, types, false);
@@ -761,7 +782,7 @@ impl NamedType {
   }
 
   #[cfg(feature = "v14")]
-  pub fn new_field_type(md: &Field<PortableForm>, types: &PortableRegistry, lookup: &TypeLookup) -> Result<Self, Box<EvalAltResult>> {
+  pub fn new_field_type(md: &Field<PortableForm>, types: &PortableRegistry, lookup: &mut Types) -> Result<Self, Box<EvalAltResult>> {
     let ty = types.resolve(md.ty().id())
       .ok_or_else(|| format!("Failed to resolve type."))?;
     //let name = get_type_name(ty, types);
@@ -1073,7 +1094,7 @@ impl StorageMetadata {
   fn from_v12_meta(
     prefix: &str,
     md: &frame_metadata::v12::StorageEntryMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     use frame_metadata::v12::StorageEntryType;
     let (key_hasher, value) = match &md.ty {
@@ -1117,7 +1138,7 @@ impl StorageMetadata {
   fn from_v13_meta(
     prefix: &str,
     md: &frame_metadata::v13::StorageEntryMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     use frame_metadata::v13::StorageEntryType;
     let (key_hasher, value) = match &md.ty {
@@ -1175,7 +1196,7 @@ impl StorageMetadata {
     prefix: &str,
     md: &frame_metadata::v14::StorageEntryMetadata<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     use frame_metadata::v14::StorageEntryType;
     let (key_hasher, value) = match &md.ty {
@@ -1364,7 +1385,7 @@ impl EventMetadata {
     _mod_idx: u8,
     event_idx: u8,
     md: &frame_metadata::v12::EventMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut event = Self {
       mod_name: mod_name.into(),
@@ -1402,7 +1423,7 @@ impl EventMetadata {
     _mod_idx: u8,
     event_idx: u8,
     md: &frame_metadata::v13::EventMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut event = Self {
       mod_name: mod_name.into(),
@@ -1440,7 +1461,7 @@ impl EventMetadata {
     _mod_idx: u8,
     md: &Variant<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut event = Self {
       mod_name: mod_name.into(),
@@ -1513,7 +1534,7 @@ impl ConstMetadata {
   fn from_v12_meta(
     mod_name: &str,
     md: &frame_metadata::v12::ModuleConstantMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let ty = decode_meta(&md.ty)?;
     let const_ty = NamedType::new(ty, lookup)?;
@@ -1529,7 +1550,7 @@ impl ConstMetadata {
   fn from_v13_meta(
     mod_name: &str,
     md: &frame_metadata::v13::ModuleConstantMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let ty = decode_meta(&md.ty)?;
     let const_ty = NamedType::new(ty, lookup)?;
@@ -1546,7 +1567,7 @@ impl ConstMetadata {
     mod_name: &str,
     md: &frame_metadata::v14::PalletConstantMetadata<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let const_ty = NamedType::new_type(md.ty.id(), types, lookup)?;
     Ok(Self {
@@ -1751,7 +1772,7 @@ impl FuncMetadata {
     mod_idx: u8,
     func_idx: u8,
     md: &frame_metadata::v12::FunctionMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut func = Self {
       mod_name: mod_name.into(),
@@ -1790,7 +1811,7 @@ impl FuncMetadata {
     mod_idx: u8,
     func_idx: u8,
     md: &frame_metadata::v13::FunctionMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut func = Self {
       mod_name: mod_name.into(),
@@ -1829,7 +1850,7 @@ impl FuncMetadata {
     mod_idx: u8,
     md: &Variant<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<(Self, Option<TypeRef>), Box<EvalAltResult>> {
     let mut func = Self {
       mod_name: mod_name.into(),
@@ -1948,7 +1969,7 @@ impl FuncArg {
   #[cfg(feature = "v12")]
   fn from_v12_meta(
     md: &frame_metadata::v12::FunctionArgumentMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let arg = Self {
       name: decode_meta(&md.name)?.clone(),
@@ -1961,7 +1982,7 @@ impl FuncArg {
   #[cfg(feature = "v13")]
   fn from_v13_meta(
     md: &frame_metadata::v13::FunctionArgumentMetadata,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let arg = Self {
       name: decode_meta(&md.name)?.clone(),
@@ -1975,7 +1996,7 @@ impl FuncArg {
   fn from_v14_meta(
     md: &Field<PortableForm>,
     types: &PortableRegistry,
-    lookup: &TypeLookup,
+    lookup: &mut Types,
   ) -> Result<Self, Box<EvalAltResult>> {
     let arg = Self {
       name: md.name().cloned().unwrap_or_default(),
@@ -2063,11 +2084,29 @@ fn encode_call(
   func.encode_call(&args[2..])
 }
 
+pub fn init_types_registry(
+  types_registry: &TypesRegistry,
+) -> Result<(), Box<EvalAltResult>> {
+  types_registry.add_init(|types, rpc, hash| {
+    let runtime_metadata = Metadata::from_rpc_get_runtime_metadata(&rpc, hash)?;
+    let metadata = Metadata::from_runtime_metadata(runtime_metadata, types)?;
+    types.set_metadata(metadata);
+
+    types.custom_encode("Call", TypeId::of::<EncodedCall>(), |value, data| {
+      let call = value.cast::<EncodedCall>();
+      data.encode(call);
+      Ok(())
+    })?;
+
+    Ok(())
+  });
+  Ok(())
+}
+
 pub fn init_engine(
   engine: &mut Engine,
   globals: &mut HashMap<String, Dynamic>,
   client: &Client,
-  lookup: &TypeLookup,
 ) -> Result<Metadata, Box<EvalAltResult>> {
   engine
     .register_type_with_name::<Metadata>("Metadata")
@@ -2137,12 +2176,6 @@ pub fn init_engine(
     .register_get("title", Docs::title);
 
   let metadata = client.get_metadata();
-
-  lookup.custom_encode("Call", TypeId::of::<EncodedCall>(), |value, data| {
-    let call = value.cast::<EncodedCall>();
-    data.encode(call);
-    Ok(())
-  })?;
 
   // Register each module as a global constant.
   metadata.add_encode_calls(engine, globals)?;

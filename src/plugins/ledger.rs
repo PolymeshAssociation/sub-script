@@ -16,7 +16,7 @@ use sp_core::Encode;
 
 use crate::client::{Client, Extra, ExtrinsicCallResult, ExtrinsicV4, SignedPayload};
 use crate::metadata::EncodedCall;
-use crate::types::TypeLookup;
+use crate::types::TypesRegistry;
 use crate::users::AccountId;
 
 pub const MAX_PACKET_LEN: u32 = 10_000_000;
@@ -378,11 +378,39 @@ impl LedgerApps {
   }
 }
 
+pub fn init_types_registry(
+  types_registry: &TypesRegistry,
+) -> Result<(), Box<EvalAltResult>> {
+  types_registry.add_init(|types, _rpc, _hash| {
+    types.custom_encode("AccountId", TypeId::of::<SharedApp>(), |value, data| {
+      let mut app = value.cast::<SharedApp>();
+      data.encode(app.acc());
+      Ok(())
+    })?;
+
+    types.custom_encode("MultiAddress", TypeId::of::<SharedApp>(), |value, data| {
+      let mut app = value.cast::<SharedApp>();
+      data.encode(0u8); // MultiAddress::Id
+      data.encode(app.acc());
+      Ok(())
+    })?;
+
+    types.custom_encode("Signatory", TypeId::of::<SharedApp>(), |value, data| {
+      let mut app = value.cast::<SharedApp>();
+      data.encode(1u8); // Signatory::Account
+      data.encode(app.acc());
+      Ok(())
+    })?;
+
+    Ok(())
+  });
+  Ok(())
+}
+
 pub fn init_engine(
   engine: &mut Engine,
   globals: &mut HashMap<String, Dynamic>,
   client: &Client,
-  lookup: &TypeLookup,
 ) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<SharedApp>("LedgerApp")
@@ -395,26 +423,6 @@ pub fn init_engine(
     "LedgerApps".into(),
     Dynamic::from(LedgerApps::new(client.clone())),
   );
-
-  lookup.custom_encode("AccountId", TypeId::of::<SharedApp>(), |value, data| {
-    let mut app = value.cast::<SharedApp>();
-    data.encode(app.acc());
-    Ok(())
-  })?;
-
-  lookup.custom_encode("MultiAddress", TypeId::of::<SharedApp>(), |value, data| {
-    let mut app = value.cast::<SharedApp>();
-    data.encode(0u8); // MultiAddress::Id
-    data.encode(app.acc());
-    Ok(())
-  })?;
-
-  lookup.custom_encode("Signatory", TypeId::of::<SharedApp>(), |value, data| {
-    let mut app = value.cast::<SharedApp>();
-    data.encode(1u8); // Signatory::Account
-    data.encode(app.acc());
-    Ok(())
-  })?;
 
   Ok(())
 }

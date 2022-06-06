@@ -9,13 +9,13 @@ use polymesh_primitives::{
   Ticker,
 };
 
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Decode;
 
 use sp_runtime::MultiSignature;
 
 use crate::client::Client;
-use crate::types::TypeLookup;
-use crate::users::{AccountId, SharedUser};
+use crate::types::TypesRegistry;
+use crate::users::SharedUser;
 
 fn str_to_ticker(val: &str) -> Result<Ticker, Box<EvalAltResult>> {
   let res = if val.len() == 12 {
@@ -31,26 +31,11 @@ fn str_to_ticker(val: &str) -> Result<Ticker, Box<EvalAltResult>> {
 }
 
 #[derive(Clone)]
-pub struct PolymeshUtils {
-  client: Client,
-}
+pub struct PolymeshUtils {}
 
 impl PolymeshUtils {
-  pub fn new(client: Client) -> Result<Self, Box<EvalAltResult>> {
-    Ok(Self { client })
-  }
-
-  pub fn get_did(&self, account_id: AccountId) -> Result<Option<IdentityId>, Box<EvalAltResult>> {
-    let key = account_id.encode();
-    match self
-      .client
-      .get_storage_map("Identity", "KeyToIdentityIds", key, None)?
-    {
-      Some(value) => Ok(Some(
-        Decode::decode(&mut value.0.as_slice()).map_err(|e| e.to_string())?,
-      )),
-      None => Ok(None),
-    }
+  pub fn new() -> Result<Self, Box<EvalAltResult>> {
+    Ok(Self {})
   }
 
   pub fn make_cdd_claim(did: &mut IdentityId) -> Claim {
@@ -63,12 +48,9 @@ impl PolymeshUtils {
 
   pub fn create_investor_uniqueness(
     &mut self,
-    mut user: SharedUser,
+    did: IdentityId,
     ticker: &str,
   ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
-    let did = self
-      .get_did(user.acc())?
-      .ok_or_else(|| format!("Missing Identity"))?;
     let uid = InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
       did.as_bytes(),
     ));
@@ -104,23 +86,82 @@ impl PolymeshUtils {
   }
 }
 
+pub fn init_types_registry(
+  types_registry: &TypesRegistry,
+) -> Result<(), Box<EvalAltResult>> {
+  types_registry.add_init(|types, _rpc, _hash| {
+    types.custom_encode("Signatory", TypeId::of::<SharedUser>(), |value, data| {
+      let user = value.cast::<SharedUser>();
+      // Encode variant idx.
+      data.encode(1u8); // Signatory::Account
+      data.encode(user.public());
+      Ok(())
+    })?;
+    types.custom_encode("IdentityId", TypeId::of::<IdentityId>(), |value, data| {
+      data.encode(value.cast::<IdentityId>());
+      Ok(())
+    })?;
+    types.custom_decode("IdentityId", |mut input, _is_compact| {
+      Ok(Dynamic::from(IdentityId::decode(&mut input)?))
+    })?;
+    types.custom_encode("Ticker", TypeId::of::<ImmutableString>(), |value, data| {
+      let value = value.cast::<ImmutableString>();
+      let ticker = str_to_ticker(value.as_str())?;
+      data.encode(&ticker);
+      Ok(())
+    })?;
+    types.custom_encode("Claim", TypeId::of::<Claim>(), |value, data| {
+      data.encode(value.cast::<Claim>());
+      Ok(())
+    })?;
+    types.custom_decode("Claim", |mut input, _is_compact| {
+      Ok(Dynamic::from(Claim::decode(&mut input)?))
+    })?;
+    types.custom_encode(
+      "InvestorZKProofData",
+      TypeId::of::<v1::InvestorZKProofData>(),
+      |value, data| {
+        data.encode(value.cast::<v1::InvestorZKProofData>());
+        Ok(())
+      },
+    )?;
+    types.custom_decode("InvestorZKProofData", |mut input, _is_compact| {
+      Ok(Dynamic::from(v1::InvestorZKProofData::decode(&mut input)?))
+    })?;
+    types.custom_encode(
+      "OffChainSignature",
+      TypeId::of::<MultiSignature>(),
+      |value, data| {
+        data.encode(value.cast::<MultiSignature>());
+        Ok(())
+      },
+    )?;
+    types.custom_encode(
+      "H512",
+      TypeId::of::<MultiSignature>(),
+      |value, data| {
+        let sig = value.cast::<MultiSignature>();
+        match sig {
+          MultiSignature::Ed25519(hash) => data.encode(hash),
+          MultiSignature::Sr25519(hash) => data.encode(hash),
+          _ => Err(format!("Unsupported Signature -> H512 conversion."))?,
+        }
+        Ok(())
+      },
+    )?;
+
+    Ok(())
+  });
+  Ok(())
+}
+
 pub fn init_engine(
   engine: &mut Engine,
   globals: &mut HashMap<String, Dynamic>,
-  client: &Client,
-  lookup: &TypeLookup,
+  _client: &Client,
 ) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<PolymeshUtils>("PolymeshUtils")
-    .register_result_fn(
-      "get_did",
-      |utils: &mut PolymeshUtils, account_id: AccountId| {
-        Ok(match utils.get_did(account_id)? {
-          Some(did) => Dynamic::from(did),
-          None => Dynamic::UNIT,
-        })
-      },
-    )
     .register_result_fn(
       "create_investor_uniqueness",
       PolymeshUtils::create_investor_uniqueness,
@@ -142,80 +183,8 @@ pub fn init_engine(
       format!("{}", s)
     });
 
-  let utils = PolymeshUtils::new(client.clone())?;
+  let utils = PolymeshUtils::new()?;
   globals.insert("PolymeshUtils".into(), Dynamic::from(utils.clone()));
-
-  lookup.custom_encode("Signatory", TypeId::of::<SharedUser>(), |value, data| {
-    let user = value.cast::<SharedUser>();
-    // Encode variant idx.
-    data.encode(1u8); // Signatory::Account
-    data.encode(user.public());
-    Ok(())
-  })?;
-  lookup.custom_encode(
-    "IdentityId",
-    TypeId::of::<SharedUser>(),
-    move |value, data| {
-      let mut user = value.cast::<SharedUser>();
-      let did = utils
-        .get_did(user.acc())?
-        .ok_or_else(|| format!("Missing Identity for user"))?;
-      data.encode(did);
-      Ok(())
-    },
-  )?;
-  lookup.custom_encode("IdentityId", TypeId::of::<IdentityId>(), |value, data| {
-    data.encode(value.cast::<IdentityId>());
-    Ok(())
-  })?;
-  lookup.custom_decode("IdentityId", |mut input, _is_compact| {
-    Ok(Dynamic::from(IdentityId::decode(&mut input)?))
-  })?;
-  lookup.custom_encode("Ticker", TypeId::of::<ImmutableString>(), |value, data| {
-    let value = value.cast::<ImmutableString>();
-    let ticker = str_to_ticker(value.as_str())?;
-    data.encode(&ticker);
-    Ok(())
-  })?;
-  lookup.custom_encode("Claim", TypeId::of::<Claim>(), |value, data| {
-    data.encode(value.cast::<Claim>());
-    Ok(())
-  })?;
-  lookup.custom_decode("Claim", |mut input, _is_compact| {
-    Ok(Dynamic::from(Claim::decode(&mut input)?))
-  })?;
-  lookup.custom_encode(
-    "InvestorZKProofData",
-    TypeId::of::<v1::InvestorZKProofData>(),
-    |value, data| {
-      data.encode(value.cast::<v1::InvestorZKProofData>());
-      Ok(())
-    },
-  )?;
-  lookup.custom_decode("InvestorZKProofData", |mut input, _is_compact| {
-    Ok(Dynamic::from(v1::InvestorZKProofData::decode(&mut input)?))
-  })?;
-  lookup.custom_encode(
-    "OffChainSignature",
-    TypeId::of::<MultiSignature>(),
-    |value, data| {
-      data.encode(value.cast::<MultiSignature>());
-      Ok(())
-    },
-  )?;
-  lookup.custom_encode(
-    "H512",
-    TypeId::of::<MultiSignature>(),
-    |value, data| {
-      let sig = value.cast::<MultiSignature>();
-      match sig {
-        MultiSignature::Ed25519(hash) => data.encode(hash),
-        MultiSignature::Sr25519(hash) => data.encode(hash),
-        _ => Err(format!("Unsupported Signature -> H512 conversion."))?,
-      }
-      Ok(())
-    },
-  )?;
 
   Ok(())
 }
