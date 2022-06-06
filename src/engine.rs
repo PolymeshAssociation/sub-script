@@ -10,7 +10,7 @@ pub use rhai::{AST, Dynamic, Engine, EvalAltResult, Position, ParseError, Scope}
 #[cfg(not(feature = "no_optimize"))]
 use rhai::OptimizationLevel;
 
-use crate::{client, metadata, plugins, rpc, storage, types, users};
+use crate::{block, client, metadata, plugins, rpc, storage, types, users};
 
 #[derive(Debug, Clone)]
 pub struct EngineOptions {
@@ -228,6 +228,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   let lookup = types_registry.get_block_types(&rpc, None)?;
 
   let client = client::init_engine(&rpc, &mut engine, &lookup)?;
+  block::init_engine(&mut engine)?;
   let users = users::init_engine(&mut engine, &client);
   let metadata = metadata::init_engine(&mut engine, &mut globals, &client)?;
   let storage = storage::init_engine(&mut engine, &client, &metadata);

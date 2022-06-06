@@ -10,6 +10,9 @@ pub use rpc::*;
 pub mod client;
 pub use client::*;
 
+pub mod block;
+pub use block::*;
+
 pub mod types;
 pub use types::*;
 

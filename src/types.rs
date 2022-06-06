@@ -29,7 +29,7 @@ use dashmap::DashMap;
 
 use super::engine::EngineOptions;
 use super::metadata::EncodedArgs;
-use super::client::BlockHash;
+use super::block::{BlockHash, hash_from_dynamic};
 use super::rpc::RpcHandler;
 use super::users::{AccountId, SharedUser};
 use super::metadata::Metadata;
@@ -1461,7 +1461,13 @@ pub fn init_engine(
   opts: &EngineOptions,
 ) -> Result<TypesRegistry, Box<EvalAltResult>> {
   engine
-    .register_type_with_name::<TypeLookup>("TypesRegistry")
+    .register_type_with_name::<TypesRegistry>("TypesRegistry")
+    .register_result_fn(
+      "get_block_types",
+      |registry: &mut TypesRegistry, rpc: RpcHandler, hash: Dynamic| {
+        registry.get_block_types(&rpc, hash_from_dynamic(hash))
+      },
+    )
     .register_type_with_name::<TypeLookup>("TypeLookup")
     .register_fn("dump_types", TypeLookup::dump_types)
     .register_fn("dump_unresolved", TypeLookup::dump_unresolved)

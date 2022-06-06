@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Mutex};
 use std::thread;
 
+use sp_core::storage::StorageData;
 use sp_version::RuntimeVersion;
 
 use serde::{de::DeserializeOwned, Deserialize};
@@ -13,6 +14,9 @@ use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult};
 
 use ws::{Factory, Handler, Message, WebSocket};
+
+use crate::block::{SignedBlock};
+use crate::types::TypeLookup;
 
 pub type ConnectionId = u16;
 pub type RequestId = u32;
@@ -661,15 +665,37 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
     .register_result_fn(
       "get_response",
       |client: &mut RpcHandler, token: RequestToken| {
-        let res: Option<Dynamic> = client.get_response::<Dynamic>(token)?;
+        let res = client.get_response::<Dynamic>(token)?;
         Ok(res.unwrap_or(Dynamic::UNIT))
       },
     )
     .register_result_fn(
-      "get_runtime_version",
+      "get_response_as_runtime_version",
       |client: &mut RpcHandler, token: RequestToken| {
-        let res: Option<RuntimeVersion> = client.get_response::<RuntimeVersion>(token)?;
+        let res = client.get_response::<RuntimeVersion>(token)?;
         Ok(res.and_then(|rt| to_dynamic(rt).ok()).unwrap_or(Dynamic::UNIT))
+      },
+    )
+    .register_result_fn(
+      "get_response_as_block_events",
+      |client: &mut RpcHandler, lookup: TypeLookup, token: RequestToken| {
+        let res = client.get_response::<StorageData>(token)?;
+        Ok(res.and_then(|data| {
+          let event_records = lookup.resolve("EventRecords");
+          let events = event_records.decode(data.0).ok()?;
+          to_dynamic(events).ok()
+        }).unwrap_or(Dynamic::UNIT))
+      },
+    )
+    .register_result_fn(
+      "get_response_as_block",
+      |client: &mut RpcHandler, lookup: TypeLookup, token: RequestToken| {
+        let res = client.get_response::<SignedBlock>(token)?;
+        Ok(res.and_then(|signed| {
+          let mut block = signed.block;
+          block.call_ty = Some(lookup.resolve("Call"));
+          Some(Dynamic::from(block))
+        }).unwrap_or(Dynamic::UNIT))
       },
     )
     .register_result_fn(

@@ -57,3 +57,4 @@ while block_number <= end_block {
 
 	block_number += 1;
 }
+print(`end = ${block_number}`);
