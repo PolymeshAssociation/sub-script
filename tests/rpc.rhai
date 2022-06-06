@@ -1,11 +1,13 @@
 import "../scripts/mod/polymesh" as p;
 
-let client = RPC_MANAGER.get_client("ws://127.0.0.1:9944");
+//let client = RPC_MANAGER.get_client("ws://127.0.0.1:9944");
+let client = RPC;
 print(`client = ${client}`);
 
 let tokens = [];
 
 tokens += client.call_method("chain_getBlockHash",[0]);
+tokens += client.call_method("chain_getBlockHash",[()]);
 //tokens += client.call_method("state_getRuntimeVersion",[]);
 //tokens += client.call_method("state_getMetadata",[]);
 
