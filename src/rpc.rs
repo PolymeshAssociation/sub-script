@@ -673,7 +673,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       "get_response_as_runtime_version",
       |client: &mut RpcHandler, token: RequestToken| {
         let res = client.get_response::<RuntimeVersion>(token)?;
-        Ok(res.and_then(|rt| to_dynamic(rt).ok()).unwrap_or(Dynamic::UNIT))
+        Ok(res.map(|rt| Dynamic::from(rt)).unwrap_or(Dynamic::UNIT))
       },
     )
     .register_result_fn(

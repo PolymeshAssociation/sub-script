@@ -225,7 +225,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   plugins::init_types_registry(&types_registry)?;
 
   // Get metadata/types for current block.
-  let lookup = types_registry.get_block_types(&rpc, None)?;
+  let lookup = types_registry.get_block_types(&rpc, None, None)?;
 
   let client = client::init_engine(&rpc, &mut engine, &lookup)?;
   block::init_engine(&mut engine)?;

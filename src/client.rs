@@ -54,7 +54,7 @@ impl InnerClient {
     rpc: RpcHandler,
     lookup: &TypeLookup,
   ) -> Result<Arc<Self>, Box<EvalAltResult>> {
-    let runtime_version = Self::rpc_get_runtime_version(&rpc, None)?;
+    let runtime_version = lookup.get_runtime_version();
     let genesis_hash = Self::rpc_get_genesis_hash(&rpc)?;
     let metadata = lookup.get_metadata().expect("Failed to load chain metadata");
 
@@ -801,20 +801,12 @@ pub fn init_engine(
     })
     .register_fn("get_transaction_version", |client: &mut Client| client.get_transaction_version())
     .register_result_fn("submit_unsigned", Client::submit_unsigned)
-    .register_type_with_name::<BlockHash>("BlockHash")
-    .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())
-    .register_type_with_name::<Block>("Block")
-    .register_get("extrinsics", Block::extrinsics)
-    .register_fn("extrinsics_filtered", Block::extrinsics_filtered)
-    .register_get("parent", Block::parent)
-    .register_get("block_number", Block::block_number)
-    .register_fn("to_string", Block::to_string)
-    .register_type_with_name::<EventRecords>("EventRecords")
-    .register_fn("to_string", EventRecords::to_string)
-    .register_type_with_name::<EventRecord>("EventRecord")
-    .register_get("name", EventRecord::name)
-    .register_get("args", EventRecord::args)
-    .register_fn("to_string", EventRecord::to_string)
+    .register_type_with_name::<RuntimeVersion>("RuntimeVersion")
+    .register_get("specName", |v: &mut RuntimeVersion| v.spec_name.to_string())
+    .register_get("specVersion", |v: &mut RuntimeVersion| v.spec_version as INT)
+    .register_get("implName", |v: &mut RuntimeVersion| v.impl_name.to_string())
+    .register_get("implVersion", |v: &mut RuntimeVersion| v.impl_version as INT)
+    .register_get("transactionVersion", |v: &mut RuntimeVersion| v.transaction_version as INT)
     .register_type_with_name::<ExtrinsicCallResult>("ExtrinsicCallResult")
     .register_result_fn("events", ExtrinsicCallResult::events_filtered)
     .register_get_result("events", ExtrinsicCallResult::events)

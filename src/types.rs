@@ -6,7 +6,7 @@ use std::io::BufReader;
 use std::sync::{Arc, RwLock};
 
 use parity_scale_codec::{Compact, Decode, Encode, Error as PError, Input};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 #[cfg(feature = "v14")]
 use scale_info::{
@@ -17,6 +17,7 @@ use scale_info::{
 
 use sp_core::crypto::Ss58Codec;
 use sp_runtime::{generic::Era, MultiSignature};
+use sp_version::RuntimeVersion;
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
@@ -845,15 +846,39 @@ impl TypeMeta {
 #[derive(Clone)]
 pub struct Types {
   types: IndexMap<String, TypeRef>,
+  runtime_version: RuntimeVersion,
   metadata: Option<Metadata>,
 }
 
 impl Types {
-  pub fn new() -> Self {
-    Self {
+  pub fn new(runtime_version: RuntimeVersion) -> Self {
+    let mut types = Self {
       types: IndexMap::new(),
+      runtime_version,
       metadata: None,
-    }
+    };
+    // Primitive types.
+    types.insert_meta("u8", TypeMeta::Integer(1, false));
+    types.insert_meta("u16", TypeMeta::Integer(2, false));
+    types.insert_meta("u32", TypeMeta::Integer(4, false));
+    types.insert_meta("u64", TypeMeta::Integer(8, false));
+    types.insert_meta("u128", TypeMeta::Integer(16, false));
+    types.insert_meta("u256", TypeMeta::Integer(32, false));
+    types.insert_meta("i8", TypeMeta::Integer(1, true));
+    types.insert_meta("i16", TypeMeta::Integer(2, true));
+    types.insert_meta("i32", TypeMeta::Integer(4, true));
+    types.insert_meta("i64", TypeMeta::Integer(8, true));
+    types.insert_meta("i128", TypeMeta::Integer(16, true));
+    types.insert_meta("i256", TypeMeta::Integer(32, true));
+    types.insert_meta("bool", TypeMeta::Bool);
+    types.insert_meta("Text", TypeMeta::String);
+    types.insert_meta("Option<bool>", TypeMeta::OptionBool);
+
+    types
+  }
+
+  pub fn get_runtime_version(&self) -> RuntimeVersion {
+    self.runtime_version.clone()
   }
 
   pub fn set_metadata(&mut self, metadata: Metadata) {
@@ -865,6 +890,7 @@ impl Types {
   }
 
   pub fn load_schema(&mut self, filename: &str) -> Result<(), Box<EvalAltResult>> {
+    log::info!("load_schema: {}", filename);
     let file = File::open(filename).map_err(|e| e.to_string())?;
 
     let schema: serde_json::Value =
@@ -1304,16 +1330,14 @@ pub struct TypeLookup {
 }
 
 impl TypeLookup {
-  pub fn new() -> Self {
-    Self {
-      types: Arc::new(RwLock::new(Types::new())),
-    }
-  }
-
   pub fn from_types(types: Types) -> Self {
     Self {
       types: Arc::new(RwLock::new(types)),
     }
+  }
+
+  pub fn get_runtime_version(&self) -> RuntimeVersion {
+    self.types.read().unwrap().get_runtime_version()
   }
 
   pub fn get_metadata(&self) -> Option<Metadata> {
@@ -1396,21 +1420,73 @@ impl InitRegistryFn {
   }
 }
 
+#[derive(Eq, PartialEq, Hash)]
+struct SpecVersionKey(String, u32);
+
+impl From<&RuntimeVersion> for SpecVersionKey {
+  fn from(version: &RuntimeVersion) -> Self {
+    Self(version.spec_name.to_string(), version.spec_version)
+  }
+}
+
 pub struct InnerTypesRegistry {
-  block_types: DashMap<Option<BlockHash>, TypeLookup>,
+  block_types: DashMap<Option<SpecVersionKey>, TypeLookup>,
   initializers: Vec<InitRegistryFn>,
+  substrate_types: String,
+  custom_types: String,
 }
 
 impl InnerTypesRegistry {
-  pub fn new() -> Self {
+  pub fn new(substrate_types: String, custom_types: String) -> Self {
     Self {
       block_types: DashMap::new(),
       initializers: Vec::new(),
+      substrate_types,
+      custom_types,
     }
   }
 
-  fn build_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
-    let mut types = Types::new();
+  // Get runtime version from rpc node.
+  fn rpc_get_runtime_version(rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+    let params = match hash {
+      Some(hash) => json!([hash]),
+      None => Value::Null,
+    };
+    Ok(
+      rpc
+        .call_method("state_getRuntimeVersion", params)?
+        .ok_or_else(|| format!("Failed to get RuntimeVersion from node."))?,
+    )
+  }
+
+  fn build_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    let runtime_version = match version {
+      Some(version) => version,
+      None => {
+        Self::rpc_get_runtime_version(&rpc, hash)?
+      }
+    };
+    // build schema path.
+    let spec_name = runtime_version.spec_name.to_string();
+    let spec_version = runtime_version.spec_version;
+    let name = if let Some((spec_name, _chain_type)) = spec_name.split_once("_") {
+      spec_name
+    } else {
+      &spec_name
+    };
+    let schema_prefix = format!("./schemas/{}", name);
+    log::debug!("schema_prefix = {}", schema_prefix);
+
+    let mut types = Types::new(runtime_version);
+    // Load standard substrate types.
+    if types.load_schema(&format!("{}/init_{}.json", schema_prefix, spec_version)).is_err() {
+      types.load_schema(&self.substrate_types)?;
+    }
+    // Load custom chain types.
+    if types.load_schema(&format!("{}/{}.json", schema_prefix, spec_version)).is_err() {
+      types.load_schema(&self.custom_types)?;
+    }
+
     for init in &self.initializers {
       init.init_types(&mut types, rpc, hash)?;
     }
@@ -1418,13 +1494,15 @@ impl InnerTypesRegistry {
     Ok(lookup)
   }
 
-  pub fn get_block_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+  pub fn get_block_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    let spec_key: Option<SpecVersionKey> = version.as_ref().map(|v| v.into());
     use dashmap::mapref::entry::Entry;
-    Ok(match self.block_types.entry(hash) {
+    Ok(match self.block_types.entry(spec_key) {
       Entry::Occupied(entry) => entry.get().clone(),
       Entry::Vacant(entry) => {
+        log::info!("Spec version not found: load schema/metadata.  RuntimeVersion={:?}", version);
         // Need to build/initialize new Types.
-        let lookup = self.build_types(rpc, hash)?;
+        let lookup = self.build_types(rpc, version, hash)?;
         entry.insert(lookup.clone());
         lookup
       },
@@ -1440,12 +1518,12 @@ impl InnerTypesRegistry {
 pub struct TypesRegistry(Arc<RwLock<InnerTypesRegistry>>);
 
 impl TypesRegistry {
-  pub fn new() -> Self {
-    Self(Arc::new(RwLock::new(InnerTypesRegistry::new())))
+  pub fn new(substrate_types: String, custom_types: String) -> Self {
+    Self(Arc::new(RwLock::new(InnerTypesRegistry::new(substrate_types, custom_types))))
   }
 
-  pub fn get_block_types(&self, rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
-    self.0.write().unwrap().get_block_types(rpc, hash)
+  pub fn get_block_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+    self.0.write().unwrap().get_block_types(rpc, version, hash)
   }
 
   pub fn add_init<F>(&self, func: F)
@@ -1464,8 +1542,9 @@ pub fn init_engine(
     .register_type_with_name::<TypesRegistry>("TypesRegistry")
     .register_result_fn(
       "get_block_types",
-      |registry: &mut TypesRegistry, rpc: RpcHandler, hash: Dynamic| {
-        registry.get_block_types(&rpc, hash_from_dynamic(hash))
+      |registry: &mut TypesRegistry, rpc: RpcHandler, version: Dynamic, hash: Dynamic| {
+        let version = version.try_cast::<RuntimeVersion>();
+        registry.get_block_types(&rpc, version, hash_from_dynamic(hash))
       },
     )
     .register_type_with_name::<TypeLookup>("TypeLookup")
@@ -1498,31 +1577,9 @@ pub fn init_engine(
     .register_fn("encode", |era: &mut Era| era.encode())
     .register_fn("to_string", |era: &mut Era| format!("{:?}", era));
 
-  let types_registry = TypesRegistry::new();
+  let types_registry = TypesRegistry::new(opts.substrate_types.clone(), opts.custom_types.clone());
 
-  let substrate_types = opts.substrate_types.clone();
-  let custom_types = opts.custom_types.clone();
-  types_registry.add_init(move |types, _rpc, _hash| {
-    // Primitive types.
-    types.insert_meta("u8", TypeMeta::Integer(1, false));
-    types.insert_meta("u16", TypeMeta::Integer(2, false));
-    types.insert_meta("u32", TypeMeta::Integer(4, false));
-    types.insert_meta("u64", TypeMeta::Integer(8, false));
-    types.insert_meta("u128", TypeMeta::Integer(16, false));
-    types.insert_meta("i8", TypeMeta::Integer(1, true));
-    types.insert_meta("i16", TypeMeta::Integer(2, true));
-    types.insert_meta("i32", TypeMeta::Integer(4, true));
-    types.insert_meta("i64", TypeMeta::Integer(8, true));
-    types.insert_meta("i128", TypeMeta::Integer(16, true));
-    types.insert_meta("bool", TypeMeta::Bool);
-    types.insert_meta("Text", TypeMeta::String);
-    types.insert_meta("Option<bool>", TypeMeta::OptionBool);
-
-    // Load standard substrate types.
-    types.load_schema(&substrate_types)?;
-    // Load custom chain types.
-    types.load_schema(&custom_types)?;
-
+  types_registry.add_init(|types, _rpc, _hash| {
     // Custom encodings.
     types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
       let era = value.cast::<Era>();

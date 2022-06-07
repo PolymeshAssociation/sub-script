@@ -59,7 +59,7 @@ while block_number <= end_block {
 
 		if last_rt == () || cur_spec != rt.specVersion {
 			last_rt = rt;
-			last_types = TypesRegistry.get_block_types(RPC, hash);
+			last_types = TypesRegistry.get_block_types(RPC, rt, hash);
 			cur_spec = rt.specVersion;
 			print(`================= New spec version: ${cur_spec}`);
 		}
@@ -74,8 +74,8 @@ while block_number <= end_block {
 		// Get decoded transactions from block.
 		let calls = block.extrinsics;
 		let c_count = calls.len();
-		if c_count > 1 || e_count > 1 {
-			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${calls.len()}, events = ${events.len()}`);
+		if c_count != 1 || e_count != 1 {
+			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
 		} else {
 			counter += 1;
 			if counter > 1000 {
