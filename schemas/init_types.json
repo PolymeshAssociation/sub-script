@@ -1,6 +1,4 @@
 {
-	"polymesh_primitives::Balance": "Balance",
-
   "Balance": "u128",
   "BalanceOf<T>": "Balance",
   "BlockNumber": "u32",
@@ -69,6 +67,7 @@
 		"pays_fee": "Pays"
   },
   "DispatchResult": "Result<(), DispatchError>",
+  "OpaqueTimeSlot": "Vec<u8>",
   "SessionIndex": "u32",
   "AuthIndex": "u32",
   "OpaquePeerId": "Vec<u8>",
@@ -175,27 +174,28 @@
   "EraIndex": "u32",
   "MemberCount": "u32",
   "ValidatorId": "AccountId",
-  "ValidatorIndex": "u32",
+  "ValidatorIndex": "u16",
+  "ValidatorIndex_OffchainAccuracy": "(Compact<ValidatorIndex>, Compact<OffchainAccuracy>)",
   "ValidatorCount": "u32",
   "NominatorIndex": "u32",
 	"OffchainAccuracy": "PerU16",
 	"CompactAssignments": {
-    "votes1": "Vec<(NominatorIndex, ValidatorIndex)>",
-    "votes2": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 1], ValidatorIndex)>",
-    "votes3": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 2], ValidatorIndex)>",
-    "votes4": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 3], ValidatorIndex)>",
-    "votes5": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 4], ValidatorIndex)>",
-    "votes6": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 5], ValidatorIndex)>",
-    "votes7": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 6], ValidatorIndex)>",
-    "votes8": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 7], ValidatorIndex)>",
-    "votes9": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 8], ValidatorIndex)>",
-    "votes10": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 9], ValidatorIndex)>",
-    "votes11": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 10], ValidatorIndex)>",
-    "votes12": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 11], ValidatorIndex)>",
-    "votes13": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 12], ValidatorIndex)>",
-    "votes14": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 13], ValidatorIndex)>",
-    "votes15": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 14], ValidatorIndex)>",
-    "votes16": "Vec<(NominatorIndex, [(ValidatorIndex, OffchainAccuracy); 15], ValidatorIndex)>"
+    "votes1": "Vec<(Compact<NominatorIndex>, Compact<ValidatorIndex>)>",
+    "votes2": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 1], Compact<ValidatorIndex>)>",
+    "votes3": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 2], Compact<ValidatorIndex>)>",
+    "votes4": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 3], Compact<ValidatorIndex>)>",
+    "votes5": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 4], Compact<ValidatorIndex>)>",
+    "votes6": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 5], Compact<ValidatorIndex>)>",
+    "votes7": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 6], Compact<ValidatorIndex>)>",
+    "votes8": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 7], Compact<ValidatorIndex>)>",
+    "votes9": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 8], Compact<ValidatorIndex>)>",
+    "votes10": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 9], Compact<ValidatorIndex>)>",
+    "votes11": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 10], Compact<ValidatorIndex>)>",
+    "votes12": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 11], Compact<ValidatorIndex>)>",
+    "votes13": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 12], Compact<ValidatorIndex>)>",
+    "votes14": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 13], Compact<ValidatorIndex>)>",
+    "votes15": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 14], Compact<ValidatorIndex>)>",
+    "votes16": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 15], Compact<ValidatorIndex>)>"
 	},
   "MembershipProof": {
     "session": "SessionIndex",
@@ -230,6 +230,18 @@
 		"amount": "Balance",
 		"reasons": "Reasons"
 	},
+	"IndividualExposure<AccountId, Balance>": {
+		"who": "AccountId",
+		"value": "Compact<Balance>"
+	},
+	"Exposure<AccountId, Balance>": {
+		"total": "Compact<Balance>",
+		"own": "Compact<Balance>",
+		"others": "Vec<IndividualExposure<AccountId, Balance>"
+	},
+	"FullIdentification": "Exposure<AccountId, Balance>",
+	"Identification": "FullIdentification",
+	"IdentificationTuple": "(ValidatorId, Identification)",
 	"Reasons": {
 		"_enum": ["Fee", "Misc", "All"]
 	},
