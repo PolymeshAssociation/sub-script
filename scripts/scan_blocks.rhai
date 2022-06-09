@@ -50,8 +50,17 @@ let cur_spec = 0;
 
 let block_number = start_block;
 let counter = 0;
+
+// Pre-fetch a batch of blocks.
+let next_blocks = get_block_hashes(block_number, end_block, batch_size);
+
 while block_number <= end_block {
-	let blocks = get_block_hashes(block_number, end_block, batch_size);
+	let blocks = next_blocks;
+	block_number += blocks.len();
+	if block_number <= end_block {
+		// Pre-fetch next batch.
+		next_blocks = get_block_hashes(block_number, end_block, batch_size);
+	}
 	for block in blocks {
 		let hash = block.hash;
 		// Load the block's RuntimeVersion.
