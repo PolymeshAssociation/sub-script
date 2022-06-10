@@ -270,8 +270,8 @@ impl SubstrateApp {
       &signature[1..]
     );
     let sig = match self.scheme {
-      SCHEME_ED25519 => ed25519::Signature::from_slice(&signature[1..]).into(),
-      SCHEME_SR25519 => sr25519::Signature::from_slice(&signature[1..]).into(),
+      SCHEME_ED25519 => ed25519::Signature::from_slice(&signature[1..]).expect("Invalid signature").into(),
+      SCHEME_SR25519 => sr25519::Signature::from_slice(&signature[1..]).expect("Invalid signature").into(),
       scheme => {
         panic!("Unsupported signature scheme: {}", scheme);
       }
