@@ -10,7 +10,8 @@ use rhai::{Dynamic, Engine, EvalAltResult};
 use sp_core::{ed25519, sr25519};
 use sp_runtime::generic;
 
-use ledger_apdu::{APDUAnswer, APDUCommand, APDUErrorCodes};
+use ledger_transport_hid::{hidapi, TransportNativeHID};
+use ledger_apdu::APDUErrorCode;
 
 use sp_core::Encode;
 
@@ -18,6 +19,9 @@ use crate::client::{Client, Extra, ExtrinsicCallResult, ExtrinsicV4, SignedPaylo
 use crate::metadata::EncodedCall;
 use crate::types::TypesRegistry;
 use crate::users::AccountId;
+
+type APDUAnswer = ledger_apdu::APDUAnswer<Vec<u8>>;
+type APDUCommand = ledger_apdu::APDUCommand<Vec<u8>>;
 
 pub const MAX_PACKET_LEN: u32 = 10_000_000;
 
@@ -46,7 +50,7 @@ pub trait LedgerSyncTransport: Send + Sync {
   fn send_cmd(&self, command: APDUCommand) -> Result<APDUAnswer, Box<EvalAltResult>>;
 }
 
-impl LedgerSyncTransport for ledger::TransportNativeHID {
+impl LedgerSyncTransport for TransportNativeHID {
   fn send_cmd(&self, command: APDUCommand) -> Result<APDUAnswer, Box<EvalAltResult>> {
     Ok(self.exchange(&command).map_err(|e| e.to_string())?)
   }
@@ -84,7 +88,7 @@ impl LedgerSyncTransport for TransportTcp {
     sock.read_exact(&mut buf).map_err(|e| e.to_string())?;
     log::debug!("Answer length: {}", buf.len());
 
-    Ok(APDUAnswer::from_answer(buf))
+    Ok(APDUAnswer::from_answer(buf).map_err(|e| e.to_string())?)
   }
 }
 
@@ -95,7 +99,8 @@ pub struct Ledger {
 
 impl Ledger {
   pub fn new_hid() -> Result<Self, Box<EvalAltResult>> {
-    let transport = ledger::TransportNativeHID::new().map_err(|e| e.to_string())?;
+    let hidapi = hidapi::HidApi::new().map_err(|e| e.to_string())?;
+    let transport = TransportNativeHID::new(&hidapi).map_err(|e| e.to_string())?;
     Ok(Self {
       transport: Arc::new(transport),
     })
@@ -222,17 +227,24 @@ impl SubstrateApp {
   }
 
   fn is_error(res: APDUAnswer) -> Result<Vec<u8>, Box<EvalAltResult>> {
-    if res.retcode == APDUErrorCodes::NoError as u16 {
-      Ok(res.data)
-    } else {
-      let msg = String::from_utf8_lossy(&res.data);
-      let err = ledger_apdu::map_apdu_error_description(res.retcode);
-      if msg.len() > 0 {
-        log::error!("Ledger: error: msg={}, error={}, code={:#X?}", msg, err, res.retcode);
-        Err(format!("Ledger: error: msg={}, error={}", msg, err).into())
-      } else {
-        log::error!("Ledger: error: error={}, code={:#X?}", err, res.retcode);
-        Err(format!("Ledger: error: error={}", err).into())
+    let err = APDUErrorCode::try_from(res.retcode()).ok();
+    match err {
+      Some(APDUErrorCode::NoError) => {
+        Ok(res.data().to_vec())
+      }
+      Some(err) => {
+        let msg = String::from_utf8_lossy(&res.data());
+        if msg.len() > 0 {
+          log::error!("Ledger: error: msg={}, error={}", msg, err);
+          Err(format!("Ledger: error: msg={}, error={}", msg, err).into())
+        } else {
+          log::error!("Ledger: error: error={}", err);
+          Err(format!("Ledger: error: error={}", err).into())
+        }
+      }
+      None => {
+        log::error!("Ledger: unknown error: code={:#X?}", res.retcode());
+        Err(format!("Ledger: unknown error: code={:#X?}", res.retcode()).into())
       }
     }
   }
