@@ -10,9 +10,7 @@ pub mod ledger;
 #[cfg(feature = "polymesh")]
 pub mod polymesh;
 
-pub fn init_types_registry(
-  types_registry: &TypesRegistry,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   ledger::init_types_registry(types_registry)?;
 
   #[cfg(feature = "polymesh")]

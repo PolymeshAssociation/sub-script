@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use sp_core::storage::StorageData;
@@ -15,7 +15,7 @@ use rhai::{Dynamic, Engine, EvalAltResult};
 
 use ws::{Factory, Handler, Message, WebSocket};
 
-use crate::block::{SignedBlock};
+use crate::block::SignedBlock;
 use crate::types::TypeLookup;
 
 pub type ConnectionId = u16;
@@ -472,10 +472,7 @@ impl InnerRpcHandler {
     self.resp_tx.clone()
   }
 
-  fn wait_for_update(
-    &self,
-    wait_for: RequestToken,
-  ) -> Result<ResponseEvent, Box<EvalAltResult>> {
+  fn wait_for_update(&self, wait_for: RequestToken) -> Result<ResponseEvent, Box<EvalAltResult>> {
     loop {
       let resp_rx = self.resp_rx.lock().unwrap();
       // We need to check again for the response after acquiring the lock.
@@ -486,8 +483,8 @@ impl InnerRpcHandler {
 
       // Wait for an update from the RPC connection.
       let resp = resp_rx
-          .recv()
-          .map_err(|_| format!("RpcConnection closed"))?;
+        .recv()
+        .map_err(|_| format!("RpcConnection closed"))?;
       if wait_for == resp.token {
         log::debug!("------ got response we wanted: {:?}", resp.token);
         return Ok(resp.event);
@@ -680,22 +677,30 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       "get_response_as_block_events",
       |client: &mut RpcHandler, lookup: TypeLookup, token: RequestToken| {
         let res = client.get_response::<StorageData>(token)?;
-        Ok(res.and_then(|data| {
-          let event_records = lookup.resolve("EventRecords");
-          let events = event_records.decode(data.0).ok()?;
-          to_dynamic(events).ok()
-        }).unwrap_or(Dynamic::UNIT))
+        Ok(
+          res
+            .and_then(|data| {
+              let event_records = lookup.resolve("EventRecords");
+              let events = event_records.decode(data.0).ok()?;
+              to_dynamic(events).ok()
+            })
+            .unwrap_or(Dynamic::UNIT),
+        )
       },
     )
     .register_result_fn(
       "get_response_as_block",
       |client: &mut RpcHandler, lookup: TypeLookup, token: RequestToken| {
         let res = client.get_response::<SignedBlock>(token)?;
-        Ok(res.and_then(|signed| {
-          let mut block = signed.block;
-          block.call_ty = Some(lookup.resolve("Call"));
-          Some(Dynamic::from(block))
-        }).unwrap_or(Dynamic::UNIT))
+        Ok(
+          res
+            .and_then(|signed| {
+              let mut block = signed.block;
+              block.call_ty = Some(lookup.resolve("Call"));
+              Some(Dynamic::from(block))
+            })
+            .unwrap_or(Dynamic::UNIT),
+        )
       },
     )
     .register_result_fn(

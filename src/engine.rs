@@ -5,7 +5,7 @@ use std::thread::{spawn, JoinHandle};
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
 
-pub use rhai::{AST, Dynamic, Engine, EvalAltResult, Position, ParseError, Scope};
+pub use rhai::{Dynamic, Engine, EvalAltResult, ParseError, Position, Scope, AST};
 
 #[cfg(not(feature = "no_optimize"))]
 use rhai::OptimizationLevel;
@@ -24,9 +24,7 @@ pub fn read_script(script: &PathBuf) -> Result<(String, String), Box<EvalAltResu
   let mut contents = String::new();
 
   let filename = match script.as_path().canonicalize() {
-    Err(err) => {
-      Err(format!("Error script file path: {:?}\n{}", script, err))?
-    }
+    Err(err) => Err(format!("Error script file path: {:?}\n{}", script, err))?,
     Ok(f) => match f.strip_prefix(std::env::current_dir().unwrap().canonicalize().unwrap()) {
       Ok(f) => f.into(),
       _ => f,
@@ -34,13 +32,11 @@ pub fn read_script(script: &PathBuf) -> Result<(String, String), Box<EvalAltResu
   };
 
   let mut f = match File::open(&filename) {
-    Err(err) => {
-      Err(format!(
-        "Error reading script file: {}\n{}",
-        filename.to_string_lossy(),
-        err
-      ))?
-    }
+    Err(err) => Err(format!(
+      "Error reading script file: {}\n{}",
+      filename.to_string_lossy(),
+      err
+    ))?,
     Ok(f) => f,
   };
 
@@ -114,14 +110,14 @@ pub struct TaskHandle(Arc<RwLock<Option<JoinHandle<Result<Dynamic, Box<EvalAltRe
 
 impl TaskHandle {
   fn new(handle: JoinHandle<Result<Dynamic, Box<EvalAltResult>>>) -> Self {
-     Self(Arc::new(RwLock::new(Some(handle))))
+    Self(Arc::new(RwLock::new(Some(handle))))
   }
 
   pub fn join(&mut self) -> Result<Dynamic, Box<EvalAltResult>> {
     match self.0.write().unwrap().take() {
-      Some(handle) => {
-        handle.join().map_err(|err| format!("Failed to join thread: {:?}", err))?
-      }
+      Some(handle) => handle
+        .join()
+        .map_err(|err| format!("Failed to join thread: {:?}", err))?,
       _ => Err(format!("Already joined task"))?,
     }
   }
@@ -132,7 +128,7 @@ pub struct SharedEngine(Arc<RwLock<Engine>>);
 
 impl SharedEngine {
   fn new(engine: Engine) -> Self {
-     Self(Arc::new(RwLock::new(engine)))
+    Self(Arc::new(RwLock::new(engine)))
   }
 
   pub fn compile(&self, script: &str) -> Result<AST, Box<EvalAltResult>> {
@@ -150,11 +146,19 @@ impl SharedEngine {
     self.0.read().unwrap().run_ast_with_scope(scope, ast)
   }
 
-  pub fn eval_ast_with_scope(&self, scope: &mut Scope, ast: &AST) -> Result<Dynamic, Box<EvalAltResult>> {
+  pub fn eval_ast_with_scope(
+    &self,
+    scope: &mut Scope,
+    ast: &AST,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
     self.0.read().unwrap().eval_ast_with_scope(scope, ast)
   }
 
-  pub fn run_file_with_scope(&self, scope: &mut Scope, path: PathBuf) -> Result<(), Box<EvalAltResult>> {
+  pub fn run_file_with_scope(
+    &self,
+    scope: &mut Scope,
+    path: PathBuf,
+  ) -> Result<(), Box<EvalAltResult>> {
     let ast = self.compile_file(path)?;
     self.0.read().unwrap().run_ast_with_scope(scope, &ast)
   }
@@ -164,7 +168,11 @@ impl SharedEngine {
     self.spawn_task_ast_args(ast, Dynamic::UNIT)
   }
 
-  pub fn spawn_task_args(&mut self, script: &str, args: Dynamic) -> Result<TaskHandle, Box<EvalAltResult>> {
+  pub fn spawn_task_args(
+    &mut self,
+    script: &str,
+    args: Dynamic,
+  ) -> Result<TaskHandle, Box<EvalAltResult>> {
     let ast = self.compile(script)?;
     self.spawn_task_ast_args(ast, args)
   }
@@ -174,16 +182,24 @@ impl SharedEngine {
     self.spawn_task_ast_args(ast, Dynamic::UNIT)
   }
 
-  pub fn spawn_file_task_args(&mut self, file: &str, args: Dynamic) -> Result<TaskHandle, Box<EvalAltResult>> {
+  pub fn spawn_file_task_args(
+    &mut self,
+    file: &str,
+    args: Dynamic,
+  ) -> Result<TaskHandle, Box<EvalAltResult>> {
     let ast = self.compile_file(file.into())?;
     self.spawn_task_ast_args(ast, args)
   }
 
-  fn spawn_task_ast_args(&mut self, ast: AST, args: Dynamic) -> Result<TaskHandle, Box<EvalAltResult>> {
+  fn spawn_task_ast_args(
+    &mut self,
+    ast: AST,
+    args: Dynamic,
+  ) -> Result<TaskHandle, Box<EvalAltResult>> {
     let engine = self.clone();
     let handle = spawn(move || {
-        let mut scope = engine.new_scope(args);
-        engine.eval_ast_with_scope(&mut scope, &ast)
+      let mut scope = engine.new_scope(args);
+      engine.eval_ast_with_scope(&mut scope, &ast)
     });
     Ok(TaskHandle::new(handle))
   }

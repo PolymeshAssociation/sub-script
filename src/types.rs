@@ -9,11 +9,7 @@ use parity_scale_codec::{Compact, Decode, Encode, Error as PError, Input};
 use serde_json::{json, Map, Value};
 
 #[cfg(feature = "v14")]
-use scale_info::{
-  form::PortableForm,
-  PortableRegistry,
-  Type, TypeDef, TypeDefPrimitive,
-};
+use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
 
 use sp_core::crypto::Ss58Codec;
 use sp_runtime::{generic::Era, MultiSignature};
@@ -28,12 +24,12 @@ use indexmap::map::IndexMap;
 
 use dashmap::DashMap;
 
+use super::block::{hash_from_dynamic, BlockHash};
 use super::engine::EngineOptions;
 use super::metadata::EncodedArgs;
-use super::block::{BlockHash, hash_from_dynamic};
+use super::metadata::Metadata;
 use super::rpc::RpcHandler;
 use super::users::{AccountId, SharedUser};
-use super::metadata::Metadata;
 
 #[cfg(feature = "v14")]
 pub fn is_type_compact(ty: &Type<PortableForm>) -> bool {
@@ -47,21 +43,28 @@ pub fn is_type_compact(ty: &Type<PortableForm>) -> bool {
 pub fn get_type_name(ty: &Type<PortableForm>, types: &PortableRegistry, full: bool) -> String {
   let name = match ty.type_def() {
     TypeDef::Sequence(s) => {
-      let elm_ty = types.resolve(s.type_param().id())
+      let elm_ty = types
+        .resolve(s.type_param().id())
         .expect("Failed to resolve sequence element type");
       format!("Vec<{}>", get_type_name(elm_ty, types, full))
     }
     TypeDef::Array(a) => {
-      let elm_ty = types.resolve(a.type_param().id())
+      let elm_ty = types
+        .resolve(a.type_param().id())
         .expect("Failed to resolve array element type");
       format!("[{}; {}]", get_type_name(elm_ty, types, full), a.len())
     }
     TypeDef::Tuple(t) => {
-      let fields = t.fields().iter().map(|f| {
-        let f_ty = types.resolve(f.id())
-          .expect("Failed to resolve tuple element type");
-        get_type_name(f_ty, types, full)
-      }).collect::<Vec<_>>();
+      let fields = t
+        .fields()
+        .iter()
+        .map(|f| {
+          let f_ty = types
+            .resolve(f.id())
+            .expect("Failed to resolve tuple element type");
+          get_type_name(f_ty, types, full)
+        })
+        .collect::<Vec<_>>();
       format!("({})", fields.join(","))
     }
     TypeDef::Primitive(p) => {
@@ -85,7 +88,8 @@ pub fn get_type_name(ty: &Type<PortableForm>, types: &PortableRegistry, full: bo
       }
     }
     TypeDef::Compact(c) => {
-      let elm_ty = types.resolve(c.type_param().id())
+      let elm_ty = types
+        .resolve(c.type_param().id())
         .expect("Failed to resolve Compact type");
       format!("Compact<{}>", get_type_name(elm_ty, types, full))
     }
@@ -99,16 +103,18 @@ pub fn get_type_name(ty: &Type<PortableForm>, types: &PortableRegistry, full: bo
   };
   let ty_params = ty.type_params();
   if ty_params.len() > 0 {
-    let params = ty_params.iter().map(|p| {
-      match p.ty() {
+    let params = ty_params
+      .iter()
+      .map(|p| match p.ty() {
         Some(ty) => {
-          let p_ty = types.resolve(ty.id())
+          let p_ty = types
+            .resolve(ty.id())
             .expect("Failed to resolve type parameter");
           get_type_name(p_ty, types, full)
         }
-        None => p.name().clone()
-      }
-    }).collect::<Vec<_>>();
+        None => p.name().clone(),
+      })
+      .collect::<Vec<_>>();
     format!("{}<{}>", name, params.join(","))
   } else {
     name
@@ -208,7 +214,9 @@ impl<'a> Input for BoxedInput<'a> {
 }
 
 #[derive(Clone)]
-pub struct WrapDecodeFn(Arc<dyn Fn(BoxedInput, bool) -> Result<Dynamic, PError> + Send + Sync + 'static>);
+pub struct WrapDecodeFn(
+  Arc<dyn Fn(BoxedInput, bool) -> Result<Dynamic, PError> + Send + Sync + 'static>,
+);
 
 impl WrapDecodeFn {
   pub fn decode_value<I: Input>(&self, input: &mut I, is_compact: bool) -> Result<Dynamic, PError> {
@@ -261,11 +269,7 @@ impl CustomType {
     }
   }
 
-  pub fn decode_value<I: Input>(
-    &self,
-    input: &mut I,
-    is_compact: bool,
-  ) -> Result<Dynamic, PError> {
+  pub fn decode_value<I: Input>(&self, input: &mut I, is_compact: bool) -> Result<Dynamic, PError> {
     match &self.decode {
       Some(func) => func.decode_value(input, is_compact),
       None => self.type_meta.decode_value(input, is_compact),
@@ -1093,7 +1097,9 @@ impl Types {
             let s = match broken_type.take() {
               Some(s1) => format!("{}, {}", s1, s),
               None => s.to_string(),
-            }.trim().to_string();
+            }
+            .trim()
+            .to_string();
             // Check for broken type.
             let left = s.chars().filter(|c| *c == '<').count();
             let right = s.chars().filter(|c| *c == '>').count();
@@ -1171,18 +1177,29 @@ impl Types {
   }
 
   #[cfg(feature = "v14")]
-  fn import_v14_type(&mut self, id: u32, ty: &Type<PortableForm>, id_to_ref: &HashMap<u32, TypeRef>) -> Result<(), Box<EvalAltResult>> {
+  fn import_v14_type(
+    &mut self,
+    id: u32,
+    ty: &Type<PortableForm>,
+    id_to_ref: &HashMap<u32, TypeRef>,
+  ) -> Result<(), Box<EvalAltResult>> {
     let type_ref = id_to_ref.get(&id).unwrap();
     log::debug!("import_v14_type: {}", ty.path());
     let type_meta = match ty.type_def() {
       TypeDef::Composite(s) => {
         let mut fields = IndexMap::new();
-        log::debug!("import_v14_type: Struct({}): fields={:#?}", ty.path(), s.fields());
+        log::debug!(
+          "import_v14_type: Struct({}): fields={:#?}",
+          ty.path(),
+          s.fields()
+        );
         for f in s.fields() {
-          let name = f.name().cloned().unwrap_or_else(|| {
-            format!("unnamed_{}", fields.len())
-          });
-          let field_ty = id_to_ref.get(&f.ty().id())
+          let name = f
+            .name()
+            .cloned()
+            .unwrap_or_else(|| format!("unnamed_{}", fields.len()));
+          let field_ty = id_to_ref
+            .get(&f.ty().id())
             .cloned()
             .expect("Failed to resolve Composite field type");
           fields.insert(name.to_string(), field_ty);
@@ -1191,9 +1208,15 @@ impl Types {
       }
       TypeDef::Variant(v) => {
         let mut variants = EnumVariants::new();
-        log::debug!("import_v14_type: Enum({}): variants={:#?}", ty.path(), v.variants());
+        log::debug!(
+          "import_v14_type: Enum({}): variants={:#?}",
+          ty.path(),
+          v.variants()
+        );
         for var in v.variants() {
-          let mut fields = var.fields().into_iter()
+          let mut fields = var
+            .fields()
+            .into_iter()
             .map(|ty| id_to_ref.get(&ty.ty().id()).cloned())
             .collect::<Option<Vec<_>>>()
             .expect("Failed to resolve Enum variant field type");
@@ -1202,25 +1225,33 @@ impl Types {
           } else if fields.len() == 1 {
             variants.insert_at(var.index(), var.name(), fields.pop());
           } else {
-            variants.insert_at(var.index(), var.name(), Some(TypeMeta::Tuple(fields).into()));
+            variants.insert_at(
+              var.index(),
+              var.name(),
+              Some(TypeMeta::Tuple(fields).into()),
+            );
           }
         }
         TypeMeta::Enum(variants)
       }
       TypeDef::Sequence(s) => {
-        let elm_ty = id_to_ref.get(&s.type_param().id())
+        let elm_ty = id_to_ref
+          .get(&s.type_param().id())
           .cloned()
           .expect("Failed to resolve Sequence element type");
         TypeMeta::Vector(elm_ty)
       }
       TypeDef::Array(a) => {
-        let elm_ty = id_to_ref.get(&a.type_param().id())
+        let elm_ty = id_to_ref
+          .get(&a.type_param().id())
           .cloned()
           .expect("Failed to resolve Array element type");
         TypeMeta::Slice(a.len() as usize, elm_ty)
       }
       TypeDef::Tuple(t) => {
-        let defs = t.fields().into_iter()
+        let defs = t
+          .fields()
+          .into_iter()
           .map(|ty| id_to_ref.get(&ty.id()).cloned())
           .collect::<Option<Vec<_>>>()
           .expect("Failed to resolve Tuple field type");
@@ -1247,7 +1278,8 @@ impl Types {
         }
       }
       TypeDef::Compact(c) => {
-        let elm_ty = id_to_ref.get(&c.type_param().id())
+        let elm_ty = id_to_ref
+          .get(&c.type_param().id())
           .cloned()
           .expect("Failed to resolve Compact type");
         TypeMeta::Compact(elm_ty)
@@ -1406,7 +1438,12 @@ impl TypeLookup {
 }
 
 pub struct InitRegistryFn(
-  Box<dyn Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>> + Send + Sync + 'static>,
+  Box<
+    dyn Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>>
+      + Send
+      + Sync
+      + 'static,
+  >,
 );
 
 impl InitRegistryFn {
@@ -1447,7 +1484,10 @@ impl InnerTypesRegistry {
   }
 
   // Get runtime version from rpc node.
-  fn rpc_get_runtime_version(rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+  fn rpc_get_runtime_version(
+    rpc: &RpcHandler,
+    hash: Option<BlockHash>,
+  ) -> Result<RuntimeVersion, Box<EvalAltResult>> {
     let params = match hash {
       Some(hash) => json!([hash]),
       None => Value::Null,
@@ -1459,12 +1499,15 @@ impl InnerTypesRegistry {
     )
   }
 
-  fn build_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+  fn build_types(
+    &self,
+    rpc: &RpcHandler,
+    version: Option<RuntimeVersion>,
+    hash: Option<BlockHash>,
+  ) -> Result<TypeLookup, Box<EvalAltResult>> {
     let runtime_version = match version {
       Some(version) => version,
-      None => {
-        Self::rpc_get_runtime_version(&rpc, hash)?
-      }
+      None => Self::rpc_get_runtime_version(&rpc, hash)?,
     };
     // build schema path.
     let spec_name = runtime_version.spec_name.to_string();
@@ -1479,11 +1522,17 @@ impl InnerTypesRegistry {
 
     let mut types = Types::new(runtime_version);
     // Load standard substrate types.
-    if types.load_schema(&format!("{}/init_{}.json", schema_prefix, spec_version)).is_err() {
+    if types
+      .load_schema(&format!("{}/init_{}.json", schema_prefix, spec_version))
+      .is_err()
+    {
       types.load_schema(&self.substrate_types)?;
     }
     // Load custom chain types.
-    if types.load_schema(&format!("{}/{}.json", schema_prefix, spec_version)).is_err() {
+    if types
+      .load_schema(&format!("{}/{}.json", schema_prefix, spec_version))
+      .is_err()
+    {
       types.load_schema(&self.custom_types)?;
     }
 
@@ -1494,18 +1543,26 @@ impl InnerTypesRegistry {
     Ok(lookup)
   }
 
-  pub fn get_block_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+  pub fn get_block_types(
+    &self,
+    rpc: &RpcHandler,
+    version: Option<RuntimeVersion>,
+    hash: Option<BlockHash>,
+  ) -> Result<TypeLookup, Box<EvalAltResult>> {
     let spec_key: Option<SpecVersionKey> = version.as_ref().map(|v| v.into());
     use dashmap::mapref::entry::Entry;
     Ok(match self.block_types.entry(spec_key) {
       Entry::Occupied(entry) => entry.get().clone(),
       Entry::Vacant(entry) => {
-        log::info!("Spec version not found: load schema/metadata.  RuntimeVersion={:?}", version);
+        log::info!(
+          "Spec version not found: load schema/metadata.  RuntimeVersion={:?}",
+          version
+        );
         // Need to build/initialize new Types.
         let lookup = self.build_types(rpc, version, hash)?;
         entry.insert(lookup.clone());
         lookup
-      },
+      }
     })
   }
 
@@ -1519,18 +1576,33 @@ pub struct TypesRegistry(Arc<RwLock<InnerTypesRegistry>>);
 
 impl TypesRegistry {
   pub fn new(substrate_types: String, custom_types: String) -> Self {
-    Self(Arc::new(RwLock::new(InnerTypesRegistry::new(substrate_types, custom_types))))
+    Self(Arc::new(RwLock::new(InnerTypesRegistry::new(
+      substrate_types,
+      custom_types,
+    ))))
   }
 
-  pub fn get_block_types(&self, rpc: &RpcHandler, version: Option<RuntimeVersion>, hash: Option<BlockHash>) -> Result<TypeLookup, Box<EvalAltResult>> {
+  pub fn get_block_types(
+    &self,
+    rpc: &RpcHandler,
+    version: Option<RuntimeVersion>,
+    hash: Option<BlockHash>,
+  ) -> Result<TypeLookup, Box<EvalAltResult>> {
     self.0.write().unwrap().get_block_types(rpc, version, hash)
   }
 
   pub fn add_init<F>(&self, func: F)
   where
-    F: 'static + Send + Sync + Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>>,
+    F: 'static
+      + Send
+      + Sync
+      + Fn(&mut Types, &RpcHandler, Option<BlockHash>) -> Result<(), Box<EvalAltResult>>,
   {
-    self.0.write().unwrap().add_init(InitRegistryFn(Box::new(func)))
+    self
+      .0
+      .write()
+      .unwrap()
+      .add_init(InitRegistryFn(Box::new(func)))
   }
 }
 
@@ -1633,7 +1705,7 @@ pub fn init_engine(
 
     #[cfg(feature = "libp2p")]
     {
-      use libp2p_core::{PeerId, Multiaddr};
+      use libp2p_core::{Multiaddr, PeerId};
 
       types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
         let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
@@ -1660,7 +1732,7 @@ pub fn init_engine(
 
   #[cfg(feature = "libp2p")]
   {
-    use libp2p_core::{PeerId, Multiaddr};
+    use libp2p_core::{Multiaddr, PeerId};
 
     engine
       .register_type_with_name::<PeerId>("PeerId")

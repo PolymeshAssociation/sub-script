@@ -4,28 +4,16 @@ use std::ops::{Deref, DerefMut};
 
 use hex::FromHex;
 
-use frame_metadata::{
-  RuntimeMetadata, RuntimeMetadataPrefixed,
-};
-#[cfg(any(
-	feature = "v13",
-	feature = "v12",
-))]
-use frame_metadata::decode_different::{
-  DecodeDifferent, DecodeDifferentArray,
-};
+#[cfg(any(feature = "v13", feature = "v12",))]
+use frame_metadata::decode_different::{DecodeDifferent, DecodeDifferentArray};
+use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use frame_support::{
   Blake2_128, Blake2_128Concat, Blake2_256, StorageHasher as StorageHasherTrait, Twox128, Twox256,
   Twox64Concat,
 };
-#[cfg(feature = "v14")]
-use scale_info::{
-  form::PortableForm,
-  PortableRegistry,
-  TypeDef,
-  Variant, Field,
-};
 use parity_scale_codec::{Decode, Encode, Output};
+#[cfg(feature = "v14")]
+use scale_info::{form::PortableForm, Field, PortableRegistry, TypeDef, Variant};
 use sp_core::{self, storage::StorageKey};
 
 use serde_json::json;
@@ -33,17 +21,14 @@ use serde_json::json;
 use rhai::plugin::NativeCallContext;
 use rhai::{Dynamic, Engine, EvalAltResult, FnPtr, Map as RMap, INT};
 
-use crate::client::{Client, BlockHash};
+use crate::client::{BlockHash, Client};
 use crate::rpc::*;
-use crate::types::{EnumVariants, TypesRegistry, Types, TypeMeta, TypeRef};
+use crate::types::{EnumVariants, TypeMeta, TypeRef, Types, TypesRegistry};
 
 #[cfg(feature = "v14")]
 use crate::types::{get_type_name, is_type_compact};
 
-#[cfg(any(
-	feature = "v13",
-	feature = "v12",
-))]
+#[cfg(any(feature = "v13", feature = "v12",))]
 fn decode_meta<B: 'static, O: 'static>(
   encoded: &DecodeDifferent<B, O>,
 ) -> Result<&O, Box<EvalAltResult>> {
@@ -62,7 +47,8 @@ pub struct Metadata {
 impl Metadata {
   // Get metadata from rpc node.
   pub fn from_rpc_get_runtime_metadata(
-    rpc: &RpcHandler, hash: Option<BlockHash>,
+    rpc: &RpcHandler,
+    hash: Option<BlockHash>,
   ) -> Result<RuntimeMetadataPrefixed, Box<EvalAltResult>> {
     let params = match hash {
       Some(hash) => json!([hash]),
@@ -89,7 +75,7 @@ impl Metadata {
         }
 
         Self::from_v12_metadata(v12, lookup)?
-      },
+      }
       #[cfg(feature = "v13")]
       RuntimeMetadata::V13(v13) => {
         if metadata_prefixed.0 != frame_metadata::v13::META_RESERVED {
@@ -332,17 +318,16 @@ impl ModuleMetadata {
 
       decode_meta(calls)?.iter().enumerate().try_for_each(
         |(func_idx, md)| -> Result<(), Box<EvalAltResult>> {
-          let (func, ty_ref) = FuncMetadata::from_v12_meta(&mod_name, mod_idx, func_idx as u8, md, lookup)?;
+          let (func, ty_ref) =
+            FuncMetadata::from_v12_meta(&mod_name, mod_idx, func_idx as u8, md, lookup)?;
           let name = func.name.clone();
           raw_calls.insert_at(func.func_idx, &name, ty_ref);
           module.funcs.insert(name, func);
           Ok(())
         },
       )?;
-      module.call_ref = Some(lookup.insert_meta(
-        &format!("{}::RawCall", mod_name),
-        TypeMeta::Enum(raw_calls),
-      ));
+      module.call_ref =
+        Some(lookup.insert_meta(&format!("{}::RawCall", mod_name), TypeMeta::Enum(raw_calls)));
     }
 
     // Decode module storage.
@@ -442,17 +427,16 @@ impl ModuleMetadata {
 
       decode_meta(calls)?.iter().enumerate().try_for_each(
         |(func_idx, md)| -> Result<(), Box<EvalAltResult>> {
-          let (func, ty_ref) = FuncMetadata::from_v13_meta(&mod_name, mod_idx, func_idx as u8, md, lookup)?;
+          let (func, ty_ref) =
+            FuncMetadata::from_v13_meta(&mod_name, mod_idx, func_idx as u8, md, lookup)?;
           let name = func.name.clone();
           raw_calls.insert_at(func.func_idx, &name, ty_ref);
           module.funcs.insert(name, func);
           Ok(())
         },
       )?;
-      module.call_ref = Some(lookup.insert_meta(
-        &format!("{}::RawCall", mod_name),
-        TypeMeta::Enum(raw_calls),
-      ));
+      module.call_ref =
+        Some(lookup.insert_meta(&format!("{}::RawCall", mod_name), TypeMeta::Enum(raw_calls)));
     }
 
     // Decode module storage.
@@ -523,7 +507,6 @@ impl ModuleMetadata {
     Ok(module)
   }
 
-
   #[cfg(feature = "v14")]
   fn from_v14_meta(
     md: &frame_metadata::v14::PalletMetadata<PortableForm>,
@@ -552,34 +535,35 @@ impl ModuleMetadata {
       // Module RawCall type.
       let mut raw_calls = EnumVariants::new();
 
-      let call_ty = types.resolve(calls.ty.id())
+      let call_ty = types
+        .resolve(calls.ty.id())
         .expect("Missing Pallet call type");
       match call_ty.type_def() {
         TypeDef::Variant(v) => {
-          v.variants().iter().try_for_each(
-            |md| -> Result<(), Box<EvalAltResult>> {
-              let (func, ty_ref) = FuncMetadata::from_v14_meta(&mod_name, mod_idx, md, types, lookup)?;
+          v.variants()
+            .iter()
+            .try_for_each(|md| -> Result<(), Box<EvalAltResult>> {
+              let (func, ty_ref) =
+                FuncMetadata::from_v14_meta(&mod_name, mod_idx, md, types, lookup)?;
               let name = func.name.clone();
               raw_calls.insert_at(func.func_idx, &name, ty_ref);
               module.funcs.insert(name, func);
               Ok(())
-            },
-          )?;
+            })?;
         }
         _ => {
           unimplemented!("Only Variant type supported for Pallet Call type.");
         }
       }
-      module.call_ref = Some(lookup.insert_meta(
-        &format!("{}::RawCall", mod_name),
-        TypeMeta::Enum(raw_calls),
-      ));
+      module.call_ref =
+        Some(lookup.insert_meta(&format!("{}::RawCall", mod_name), TypeMeta::Enum(raw_calls)));
     }
 
     // Decode module storage.
     if let Some(storage) = &md.storage {
       let mod_prefix = &storage.prefix;
-      storage.entries
+      storage
+        .entries
         .iter()
         .try_for_each(|md| -> Result<(), Box<EvalAltResult>> {
           let storage = StorageMetadata::from_v14_meta(mod_prefix, md, types, lookup)?;
@@ -595,20 +579,21 @@ impl ModuleMetadata {
       // Module RawEvent type.
       let mut raw_events = EnumVariants::new();
 
-      let event_ty = types.resolve(events.ty.id())
+      let event_ty = types
+        .resolve(events.ty.id())
         .expect("Missing Pallet event type");
       match event_ty.type_def() {
         TypeDef::Variant(v) => {
-          v.variants().iter().try_for_each(
-            |md| -> Result<(), Box<EvalAltResult>> {
+          v.variants()
+            .iter()
+            .try_for_each(|md| -> Result<(), Box<EvalAltResult>> {
               let (event, ty_ref) =
                 EventMetadata::from_v14_meta(&mod_name, mod_idx, md, types, lookup)?;
               let name = event.name.clone();
               raw_events.insert_at(event.event_idx, &name, ty_ref);
               module.events.insert(name, event);
               Ok(())
-            },
-          )?;
+            })?;
         }
         _ => {
           unimplemented!("Only Variant type supported for Pallet Event type.");
@@ -636,20 +621,21 @@ impl ModuleMetadata {
       let mut raw_errors = EnumVariants::new();
 
       let extra_bytes = lookup.parse_type("[u8; 3]")?;
-      let error_ty = types.resolve(error.ty.id())
+      let error_ty = types
+        .resolve(error.ty.id())
         .expect("Missing Pallet error type");
       match error_ty.type_def() {
         TypeDef::Variant(v) => {
-          v.variants().iter().try_for_each(
-            |md| -> Result<(), Box<EvalAltResult>> {
+          v.variants()
+            .iter()
+            .try_for_each(|md| -> Result<(), Box<EvalAltResult>> {
               let error = ErrorMetadata::from_v14_meta(&mod_name, mod_idx, md)?;
               let name = error.name.clone();
               raw_errors.insert_at(error.error_idx, &name, Some(extra_bytes.clone()));
               module.err_idx_map.insert(error.error_idx, name.clone());
               module.errors.insert(name, error);
               Ok(())
-            },
-          )?;
+            })?;
         }
         _ => {
           unimplemented!("Only Variant type supported for Pallet Error type.");
@@ -768,8 +754,13 @@ impl NamedType {
   }
 
   #[cfg(feature = "v14")]
-  pub fn new_type(ty_id: u32, types: &PortableRegistry, lookup: &mut Types) -> Result<Self, Box<EvalAltResult>> {
-    let ty = types.resolve(ty_id)
+  pub fn new_type(
+    ty_id: u32,
+    types: &PortableRegistry,
+    lookup: &mut Types,
+  ) -> Result<Self, Box<EvalAltResult>> {
+    let ty = types
+      .resolve(ty_id)
       .ok_or_else(|| format!("Failed to resolve type."))?;
     let name = get_type_name(ty, types, false);
     let ty_meta = lookup.parse_type(&name)?;
@@ -782,11 +773,18 @@ impl NamedType {
   }
 
   #[cfg(feature = "v14")]
-  pub fn new_field_type(md: &Field<PortableForm>, types: &PortableRegistry, lookup: &mut Types) -> Result<Self, Box<EvalAltResult>> {
-    let ty = types.resolve(md.ty().id())
+  pub fn new_field_type(
+    md: &Field<PortableForm>,
+    types: &PortableRegistry,
+    lookup: &mut Types,
+  ) -> Result<Self, Box<EvalAltResult>> {
+    let ty = types
+      .resolve(md.ty().id())
       .ok_or_else(|| format!("Failed to resolve type."))?;
     //let name = get_type_name(ty, types);
-    let name = md.type_name().map(|ty_name| {
+    let name = md
+      .type_name()
+      .map(|ty_name| {
         // Trim junk from `type_name`.
         let name = if ty_name.starts_with("/*«*/") {
           let end = ty_name.len() - 6;
@@ -799,9 +797,8 @@ impl NamedType {
         } else {
           name.to_string()
         }
-      }).unwrap_or_else(|| {
-        get_type_name(ty, types, false)
-      });
+      })
+      .unwrap_or_else(|| get_type_name(ty, types, false));
     let ty_meta = lookup.parse_type(&name)?;
     let named = Self {
       name: name.into(),
@@ -844,13 +841,13 @@ impl NamedType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum KeyHasherType {
-	Blake2_128,
-	Blake2_256,
-	Blake2_128Concat,
-	Twox128,
-	Twox256,
-	Twox64Concat,
-	Identity,
+  Blake2_128,
+  Blake2_256,
+  Blake2_128Concat,
+  Twox128,
+  Twox256,
+  Twox64Concat,
+  Identity,
 }
 
 #[cfg(feature = "v12")]
@@ -1071,9 +1068,7 @@ impl KeyHasher {
     let hashers = self
       .type_hashers
       .iter_mut()
-      .map(|(t, h)| {
-        format!("{}: {:?}", t.get_name(), h)
-      })
+      .map(|(t, h)| format!("{}: {:?}", t.get_name(), h))
       .collect::<Vec<String>>()
       .join(", ");
     format!("Hasher: {}", hashers)
@@ -1166,17 +1161,20 @@ impl StorageMetadata {
         };
         (Some(hasher), value.clone())
       }
-      StorageEntryType::NMap { hashers, keys, value } => {
-        let type_hashers = decode_meta(keys)?.iter()
+      StorageEntryType::NMap {
+        hashers,
+        keys,
+        value,
+      } => {
+        let type_hashers = decode_meta(keys)?
+          .iter()
           .zip(decode_meta(hashers)?.iter())
           .map(|(key, hasher)| {
             let ty = NamedType::new(key, lookup)?;
             Ok((ty, hasher.into()))
           })
           .collect::<Result<Vec<_>, Box<EvalAltResult>>>()?;
-        let hasher = KeyHasher {
-          type_hashers,
-        };
+        let hasher = KeyHasher { type_hashers };
         (Some(hasher), value.clone())
       }
     };
@@ -1202,26 +1200,29 @@ impl StorageMetadata {
     let (key_hasher, value) = match &md.ty {
       StorageEntryType::Plain(value) => (None, value.clone()),
       StorageEntryType::Map {
-        hashers, key, value, ..
-      } => {
-        match hashers.as_slice() {
-          [hasher] => {
-            let ty = NamedType::new_type(key.id(), types, lookup)?;
-            let hasher = KeyHasher {
-              type_hashers: vec![(ty, hasher.into())],
-            };
-            (Some(hasher), value.clone())
-          }
-          hashers => {
-            let ty = NamedType::new_type(key.id(), types, lookup)?;
-            let hasher = KeyHasher {
-              type_hashers: hashers.iter()
-                .map(|hasher| (ty.clone(), hasher.into())).collect(),
-            };
-            (Some(hasher), value.clone())
-          }
+        hashers,
+        key,
+        value,
+        ..
+      } => match hashers.as_slice() {
+        [hasher] => {
+          let ty = NamedType::new_type(key.id(), types, lookup)?;
+          let hasher = KeyHasher {
+            type_hashers: vec![(ty, hasher.into())],
+          };
+          (Some(hasher), value.clone())
         }
-      }
+        hashers => {
+          let ty = NamedType::new_type(key.id(), types, lookup)?;
+          let hasher = KeyHasher {
+            type_hashers: hashers
+              .iter()
+              .map(|hasher| (ty.clone(), hasher.into()))
+              .collect(),
+          };
+          (Some(hasher), value.clone())
+        }
+      },
     };
     let storage = Self {
       prefix: prefix.into(),
@@ -2052,9 +2053,7 @@ impl Docs {
   }
 
   #[cfg(feature = "v14")]
-  fn from_v14_meta(
-    docs: &[String],
-  ) -> Self {
+  fn from_v14_meta(docs: &[String]) -> Self {
     Self {
       lines: docs.to_vec(),
     }
@@ -2084,9 +2083,7 @@ fn encode_call(
   func.encode_call(&args[2..])
 }
 
-pub fn init_types_registry(
-  types_registry: &TypesRegistry,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, rpc, hash| {
     let runtime_metadata = Metadata::from_rpc_get_runtime_metadata(&rpc, hash)?;
     let metadata = Metadata::from_runtime_metadata(runtime_metadata, types)?;

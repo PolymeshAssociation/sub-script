@@ -8,9 +8,7 @@ use sp_core::{
   storage::{StorageData, StorageKey},
   Pair,
 };
-use sp_runtime::{
-  generic::Era,
-};
+use sp_runtime::generic::Era;
 use sp_version::RuntimeVersion;
 
 use serde::{Deserialize, Serialize};
@@ -23,10 +21,10 @@ use rust_decimal::{prelude::ToPrimitive, Decimal};
 use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
-use crate::metadata::{EncodedCall, Metadata};
 pub use crate::block::*;
+use crate::metadata::{EncodedCall, Metadata};
 use crate::rpc::*;
-use crate::types::{TypesRegistry, TypeLookup, TypeRef};
+use crate::types::{TypeLookup, TypeRef, TypesRegistry};
 use crate::users::{AccountId, User};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,13 +48,12 @@ pub struct InnerClient {
 }
 
 impl InnerClient {
-  pub fn new(
-    rpc: RpcHandler,
-    lookup: &TypeLookup,
-  ) -> Result<Arc<Self>, Box<EvalAltResult>> {
+  pub fn new(rpc: RpcHandler, lookup: &TypeLookup) -> Result<Arc<Self>, Box<EvalAltResult>> {
     let runtime_version = lookup.get_runtime_version();
     let genesis_hash = Self::rpc_get_genesis_hash(&rpc)?;
-    let metadata = lookup.get_metadata().expect("Failed to load chain metadata");
+    let metadata = lookup
+      .get_metadata()
+      .expect("Failed to load chain metadata");
 
     let event_records = lookup.resolve("EventRecords");
     let account_info = lookup.resolve("AccountInfo");
@@ -75,7 +72,10 @@ impl InnerClient {
   }
 
   // Get runtime version from rpc node.
-  fn rpc_get_runtime_version(rpc: &RpcHandler, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+  fn rpc_get_runtime_version(
+    rpc: &RpcHandler,
+    hash: Option<BlockHash>,
+  ) -> Result<RuntimeVersion, Box<EvalAltResult>> {
     let params = match hash {
       Some(hash) => json!([hash]),
       None => Value::Null,
@@ -88,16 +88,19 @@ impl InnerClient {
   }
 
   // Get block hash from rpc node.
-  fn rpc_get_block_hash(rpc: &RpcHandler, block_number: u64) -> Result<Option<BlockHash>, Box<EvalAltResult>> {
-    Ok(
-      rpc
-        .call_method("chain_getBlockHash", json!([block_number]))?
-    )
+  fn rpc_get_block_hash(
+    rpc: &RpcHandler,
+    block_number: u64,
+  ) -> Result<Option<BlockHash>, Box<EvalAltResult>> {
+    Ok(rpc.call_method("chain_getBlockHash", json!([block_number]))?)
   }
 
   // Get genesis hash from rpc node.
   fn rpc_get_genesis_hash(rpc: &RpcHandler) -> Result<BlockHash, Box<EvalAltResult>> {
-    Ok(Self::rpc_get_block_hash(rpc, 0)?.ok_or_else(|| format!("Failed to get genesis hash from node."))?)
+    Ok(
+      Self::rpc_get_block_hash(rpc, 0)?
+        .ok_or_else(|| format!("Failed to get genesis hash from node."))?,
+    )
   }
 
   pub fn get_transaction_version(&self) -> i64 {
@@ -125,13 +128,19 @@ impl InnerClient {
     Self::rpc_get_block_hash(&self.rpc, block_number)
   }
 
-  pub fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>, Box<EvalAltResult>> {
+  pub fn get_block_by_number(
+    &self,
+    block_number: u64,
+  ) -> Result<Option<Block>, Box<EvalAltResult>> {
     let hash = self.get_block_hash(block_number)?;
     self.get_block(hash)
   }
 
   /// Get block RuntimeVersion.
-  pub fn get_block_runtime_version(&self, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+  pub fn get_block_runtime_version(
+    &self,
+    hash: Option<BlockHash>,
+  ) -> Result<RuntimeVersion, Box<EvalAltResult>> {
     Self::rpc_get_runtime_version(&self.rpc, hash)
   }
 
@@ -142,12 +151,10 @@ impl InnerClient {
       if block.is_some() {
         block.as_deref().cloned()
       } else {
-        let block = self
-          .get_signed_block(Some(hash))?
-          .map(|mut signed| {
-            signed.block.call_ty = Some(self.call_ty.clone());
-            signed.block
-          });
+        let block = self.get_signed_block(Some(hash))?.map(|mut signed| {
+          signed.block.call_ty = Some(self.call_ty.clone());
+          signed.block
+        });
         if let Some(block) = &block {
           // Cache new block.
           self.cached_blocks.insert(hash, block.clone());
@@ -410,7 +417,10 @@ impl Client {
     self.inner.get_block_hash(block_number)
   }
 
-  pub fn get_block_runtime_version(&self, hash: Option<BlockHash>) -> Result<RuntimeVersion, Box<EvalAltResult>> {
+  pub fn get_block_runtime_version(
+    &self,
+    hash: Option<BlockHash>,
+  ) -> Result<RuntimeVersion, Box<EvalAltResult>> {
     self.inner.get_block_runtime_version(hash)
   }
 
@@ -418,7 +428,10 @@ impl Client {
     self.inner.get_block(hash)
   }
 
-  pub fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>, Box<EvalAltResult>> {
+  pub fn get_block_by_number(
+    &self,
+    block_number: u64,
+  ) -> Result<Option<Block>, Box<EvalAltResult>> {
     self.inner.get_block_by_number(block_number)
   }
 
@@ -432,9 +445,7 @@ impl Client {
     count: u32,
     start_key: Option<&StorageKey>,
   ) -> Result<Vec<StorageKey>, Box<EvalAltResult>> {
-    self
-      .inner
-      .get_storage_keys_paged(prefix, count, start_key)
+    self.inner.get_storage_keys_paged(prefix, count, start_key)
   }
 
   pub fn get_storage_by_key(
@@ -450,9 +461,7 @@ impl Client {
     keys: &[StorageKey],
     at_block: Option<BlockHash>,
   ) -> Result<Vec<Option<StorageData>>, Box<EvalAltResult>> {
-    self
-      .inner
-      .get_storage_by_keys(keys, at_block)
+    self.inner.get_storage_by_keys(keys, at_block)
   }
 
   pub fn get_storage_value(
@@ -461,9 +470,7 @@ impl Client {
     key_name: &str,
     at_block: Option<BlockHash>,
   ) -> Result<Option<StorageData>, Box<EvalAltResult>> {
-    self
-      .inner
-      .get_storage_value(prefix, key_name, at_block)
+    self.inner.get_storage_value(prefix, key_name, at_block)
   }
 
   pub fn get_storage_map(
@@ -506,9 +513,12 @@ impl Client {
     self.inner.get_request_block_hash(token)
   }
 
-  fn call_results(&self, res: Result<(RequestToken, String), Box<EvalAltResult>>) -> Result<ExtrinsicCallResult, Box<EvalAltResult>> {
-     let (token, xthex) = res?;
-     Ok(ExtrinsicCallResult::new(self, token, xthex))
+  fn call_results(
+    &self,
+    res: Result<(RequestToken, String), Box<EvalAltResult>>,
+  ) -> Result<ExtrinsicCallResult, Box<EvalAltResult>> {
+    let (token, xthex) = res?;
+    Ok(ExtrinsicCallResult::new(self, token, xthex))
   }
 
   pub fn submit(&self, xthex: String) -> Result<ExtrinsicCallResult, Box<EvalAltResult>> {
@@ -605,9 +615,7 @@ impl InnerCallResult {
   pub fn events_filtered(&mut self, prefix: &str) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
     self.load_events()?;
     match &self.events {
-      Some(events) => {
-        Ok(events.prefix_filtered(prefix))
-      }
+      Some(events) => Ok(events.prefix_filtered(prefix)),
       None => Ok(vec![]),
     }
   }
@@ -666,7 +674,9 @@ pub struct ExtrinsicCallResult(Arc<RwLock<InnerCallResult>>);
 
 impl ExtrinsicCallResult {
   pub fn new(client: &Client, token: RequestToken, xthex: String) -> Self {
-    Self(Arc::new(RwLock::new(InnerCallResult::new(client, token, xthex))))
+    Self(Arc::new(RwLock::new(InnerCallResult::new(
+      client, token, xthex,
+    ))))
   }
 
   pub fn is_in_block(&mut self) -> Result<bool, Box<EvalAltResult>> {
@@ -706,9 +716,7 @@ impl ExtrinsicCallResult {
   }
 }
 
-pub fn init_types_registry(
-  types_registry: &TypesRegistry,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, rpc, _hash| {
     // Get Chain properties.
     let chain_props: Option<ChainProperties> = rpc.call_method("system_properties", json!([]))?;
@@ -775,38 +783,52 @@ pub fn init_engine(
 ) -> Result<Client, Box<EvalAltResult>> {
   engine
     .register_type_with_name::<Client>("Client")
-    .register_result_fn("get_block_hash", |client: &mut Client, num: i64| {
-      match client.get_block_hash(num as u64)? {
+    .register_result_fn(
+      "get_block_hash",
+      |client: &mut Client, num: i64| match client.get_block_hash(num as u64)? {
         Some(hash) => Ok(Dynamic::from(hash)),
         None => Ok(Dynamic::UNIT),
-      }
-    })
-    .register_result_fn("get_block", |client: &mut Client, hash: Dynamic| {
-      match client.get_block(hash_from_dynamic(hash))? {
+      },
+    )
+    .register_result_fn(
+      "get_block",
+      |client: &mut Client, hash: Dynamic| match client.get_block(hash_from_dynamic(hash))? {
         Some(block) => Ok(Dynamic::from(block)),
         None => Ok(Dynamic::UNIT),
-      }
-    })
+      },
+    )
     .register_result_fn("get_block_events", |client: &mut Client, hash: Dynamic| {
       client.get_block_events(hash_from_dynamic(hash))
     })
-    .register_result_fn("get_block_runtime_version", |client: &mut Client, hash: Dynamic| {
-      to_dynamic(client.get_block_runtime_version(hash_from_dynamic(hash))?)
-    })
-    .register_result_fn("get_block_by_number", |client: &mut Client, num: i64| {
-      match client.get_block_by_number(num as u64)? {
+    .register_result_fn(
+      "get_block_runtime_version",
+      |client: &mut Client, hash: Dynamic| {
+        to_dynamic(client.get_block_runtime_version(hash_from_dynamic(hash))?)
+      },
+    )
+    .register_result_fn(
+      "get_block_by_number",
+      |client: &mut Client, num: i64| match client.get_block_by_number(num as u64)? {
         Some(block) => Ok(Dynamic::from(block)),
         None => Ok(Dynamic::UNIT),
-      }
+      },
+    )
+    .register_fn("get_transaction_version", |client: &mut Client| {
+      client.get_transaction_version()
     })
-    .register_fn("get_transaction_version", |client: &mut Client| client.get_transaction_version())
     .register_result_fn("submit_unsigned", Client::submit_unsigned)
     .register_type_with_name::<RuntimeVersion>("RuntimeVersion")
     .register_get("specName", |v: &mut RuntimeVersion| v.spec_name.to_string())
-    .register_get("specVersion", |v: &mut RuntimeVersion| v.spec_version as INT)
+    .register_get("specVersion", |v: &mut RuntimeVersion| {
+      v.spec_version as INT
+    })
     .register_get("implName", |v: &mut RuntimeVersion| v.impl_name.to_string())
-    .register_get("implVersion", |v: &mut RuntimeVersion| v.impl_version as INT)
-    .register_get("transactionVersion", |v: &mut RuntimeVersion| v.transaction_version as INT)
+    .register_get("implVersion", |v: &mut RuntimeVersion| {
+      v.impl_version as INT
+    })
+    .register_get("transactionVersion", |v: &mut RuntimeVersion| {
+      v.transaction_version as INT
+    })
     .register_type_with_name::<ExtrinsicCallResult>("ExtrinsicCallResult")
     .register_result_fn("events", ExtrinsicCallResult::events_filtered)
     .register_get_result("events", ExtrinsicCallResult::events)

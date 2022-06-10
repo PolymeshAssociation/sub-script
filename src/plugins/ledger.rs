@@ -10,8 +10,8 @@ use rhai::{Dynamic, Engine, EvalAltResult};
 use sp_core::{ed25519, sr25519};
 use sp_runtime::generic;
 
-use ledger_transport_hid::{hidapi, TransportNativeHID};
 use ledger_apdu::APDUErrorCode;
+use ledger_transport_hid::{hidapi, TransportNativeHID};
 
 use sp_core::Encode;
 
@@ -229,9 +229,7 @@ impl SubstrateApp {
   fn is_error(res: APDUAnswer) -> Result<Vec<u8>, Box<EvalAltResult>> {
     let err = APDUErrorCode::try_from(res.retcode()).ok();
     match err {
-      Some(APDUErrorCode::NoError) => {
-        Ok(res.data().to_vec())
-      }
+      Some(APDUErrorCode::NoError) => Ok(res.data().to_vec()),
       Some(err) => {
         let msg = String::from_utf8_lossy(&res.data());
         if msg.len() > 0 {
@@ -282,8 +280,12 @@ impl SubstrateApp {
       &signature[1..]
     );
     let sig = match self.scheme {
-      SCHEME_ED25519 => ed25519::Signature::from_slice(&signature[1..]).expect("Invalid signature").into(),
-      SCHEME_SR25519 => sr25519::Signature::from_slice(&signature[1..]).expect("Invalid signature").into(),
+      SCHEME_ED25519 => ed25519::Signature::from_slice(&signature[1..])
+        .expect("Invalid signature")
+        .into(),
+      SCHEME_SR25519 => sr25519::Signature::from_slice(&signature[1..])
+        .expect("Invalid signature")
+        .into(),
       scheme => {
         panic!("Unsupported signature scheme: {}", scheme);
       }
@@ -390,9 +392,7 @@ impl LedgerApps {
   }
 }
 
-pub fn init_types_registry(
-  types_registry: &TypesRegistry,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
     types.custom_encode("AccountId", TypeId::of::<SharedApp>(), |value, data| {
       let mut app = value.cast::<SharedApp>();

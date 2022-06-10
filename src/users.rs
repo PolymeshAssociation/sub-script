@@ -121,7 +121,12 @@ impl InnerUsers {
   }
 
   pub fn find_by_account(&self, acc: AccountId) -> Dynamic {
-    self.account_map.get(&acc).as_deref().cloned().unwrap_or(Dynamic::UNIT)
+    self
+      .account_map
+      .get(&acc)
+      .as_deref()
+      .cloned()
+      .unwrap_or(Dynamic::UNIT)
   }
 
   fn get_user(&self, name: String) -> Result<Dynamic, Box<EvalAltResult>> {

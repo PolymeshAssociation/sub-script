@@ -1,8 +1,5 @@
 use parity_scale_codec::{Compact, Decode, Encode};
-use sp_core::{
-  hashing::blake2_256,
-  H256,
-};
+use sp_core::{hashing::blake2_256, H256};
 use sp_runtime::{
   generic::{self, Era},
   traits, MultiSignature,
@@ -102,7 +99,8 @@ impl ExtrinsicV4 {
     }
 
     if is_signed {
-      let _sig: (GenericAddress, MultiSignature, Extra) = Decode::decode(xt).map_err(|e| e.to_string())?;
+      let _sig: (GenericAddress, MultiSignature, Extra) =
+        Decode::decode(xt).map_err(|e| e.to_string())?;
     }
 
     call_ty.decode(xt.to_vec())
@@ -169,40 +167,49 @@ impl Block {
   }
 
   fn decode_xthex(&self, xthex: &String) -> Option<Dynamic> {
-    self.call_ty
-      .as_ref()
-      .map_or_else(
-        || Some(Dynamic::from(xthex.clone())),
-        |call_ty| {
-          if xthex.starts_with("0x") {
-            hex::decode(&xthex[2..]).ok()
-              .map(|xt| {
-                ExtrinsicV4::decode_call(call_ty, &mut &xt[..])
-                  .map_err(|e| eprintln!("Call decode failed: {:?}", e))
-                  .ok()
-              })
-              .flatten()
-          } else {
-            None
-          }
+    self.call_ty.as_ref().map_or_else(
+      || Some(Dynamic::from(xthex.clone())),
+      |call_ty| {
+        if xthex.starts_with("0x") {
+          hex::decode(&xthex[2..])
+            .ok()
+            .map(|xt| {
+              ExtrinsicV4::decode_call(call_ty, &mut &xt[..])
+                .map_err(|e| eprintln!("Call decode failed: {:?}", e))
+                .ok()
+            })
+            .flatten()
+        } else {
+          None
         }
-      )
+      },
+    )
   }
 
   pub fn extrinsics(&mut self) -> Dynamic {
-    Dynamic::from(self.extrinsics.iter().filter_map(|xthex| {
-      self.decode_xthex(xthex)
-    }).collect::<Vec<_>>())
+    Dynamic::from(
+      self
+        .extrinsics
+        .iter()
+        .filter_map(|xthex| self.decode_xthex(xthex))
+        .collect::<Vec<_>>(),
+    )
   }
 
   pub fn extrinsics_filtered(&mut self, xthex_partial: &str) -> Dynamic {
-    Dynamic::from(self.extrinsics.iter().filter_map(|xthex| {
-      if xthex.contains(xthex_partial) {
-        self.decode_xthex(xthex)
-      } else {
-        None
-      }
-    }).collect::<Vec<_>>())
+    Dynamic::from(
+      self
+        .extrinsics
+        .iter()
+        .filter_map(|xthex| {
+          if xthex.contains(xthex_partial) {
+            self.decode_xthex(xthex)
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>(),
+    )
   }
 
   pub fn parent(&mut self) -> BlockHash {
@@ -285,7 +292,8 @@ impl EventRecords {
   }
 
   pub fn prefix_filtered(&self, prefix: &str) -> Vec<Dynamic> {
-    self.0
+    self
+      .0
       .iter()
       .filter(|ev| ev.name.starts_with(prefix))
       .cloned()
@@ -308,9 +316,7 @@ impl EventRecords {
   }
 }
 
-pub fn init_engine(
-  engine: &mut Engine,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<BlockHash>("BlockHash")
     .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())

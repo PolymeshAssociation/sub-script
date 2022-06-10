@@ -86,9 +86,7 @@ impl PolymeshUtils {
   }
 }
 
-pub fn init_types_registry(
-  types_registry: &TypesRegistry,
-) -> Result<(), Box<EvalAltResult>> {
+pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
     types.custom_encode("Signatory", TypeId::of::<SharedUser>(), |value, data| {
       let user = value.cast::<SharedUser>();
@@ -136,19 +134,15 @@ pub fn init_types_registry(
         Ok(())
       },
     )?;
-    types.custom_encode(
-      "H512",
-      TypeId::of::<MultiSignature>(),
-      |value, data| {
-        let sig = value.cast::<MultiSignature>();
-        match sig {
-          MultiSignature::Ed25519(hash) => data.encode(hash),
-          MultiSignature::Sr25519(hash) => data.encode(hash),
-          _ => Err(format!("Unsupported Signature -> H512 conversion."))?,
-        }
-        Ok(())
-      },
-    )?;
+    types.custom_encode("H512", TypeId::of::<MultiSignature>(), |value, data| {
+      let sig = value.cast::<MultiSignature>();
+      match sig {
+        MultiSignature::Ed25519(hash) => data.encode(hash),
+        MultiSignature::Sr25519(hash) => data.encode(hash),
+        _ => Err(format!("Unsupported Signature -> H512 conversion."))?,
+      }
+      Ok(())
+    })?;
 
     Ok(())
   });
