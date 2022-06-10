@@ -93,6 +93,5 @@ while block_number <= end_block {
 			}
 		}
 	}
-	block_number += blocks.len();
 }
 print(`end = ${block_number}`);
