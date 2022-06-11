@@ -8,7 +8,7 @@ use sp_runtime::{
 use serde::{Deserialize, Serialize};
 
 use rhai::serde::from_dynamic;
-use rhai::{Dynamic, Engine, EvalAltResult, Map as RMap};
+use rhai::{Dynamic, Engine, EvalAltResult, Map as RMap, INT};
 
 use crate::metadata::EncodedCall;
 use crate::types::TypeRef;
@@ -95,7 +95,7 @@ impl ExtrinsicDetails {
   pub fn nonce(&mut self) -> Dynamic {
     match &self.signature {
       Some((_, _, extra)) => {
-        Dynamic::from(extra.nonce())
+        Dynamic::from(extra.nonce() as INT)
       }
       _ => {
         Dynamic::UNIT
