@@ -2,7 +2,7 @@ use parity_scale_codec::{Compact, Decode, Encode};
 use sp_core::{hashing::blake2_256, H256};
 use sp_runtime::{
   generic::{self, Era},
-  traits, MultiSignature,
+  traits, MultiAddress, MultiSignature,
 };
 
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub fn hash_from_dynamic(val: Dynamic) -> Option<BlockHash> {
   }
 }
 
-pub type GenericAddress = sp_runtime::MultiAddress<AccountId, ()>;
+pub type GenericAddress = MultiAddress<AccountId, ()>;
 
 pub type AdditionalSigned = (u32, u32, BlockHash, BlockHash, (), (), ());
 
@@ -35,6 +35,14 @@ pub struct Extra(Era, Compact<u32>, Compact<u128>);
 impl Extra {
   pub fn new(era: Era, nonce: u32) -> Self {
     Self(era, nonce.into(), 0u128.into())
+  }
+
+  pub fn nonce(&self) -> u32 {
+    self.1.0
+  }
+
+  pub fn tip(&self) -> u128 {
+    self.2.0
   }
 }
 
@@ -60,6 +68,59 @@ impl<'a> Encode for SignedPayload<'a> {
 
 /// Current version of the `UncheckedExtrinsic` format.
 pub const EXTRINSIC_VERSION: u8 = 4;
+
+#[derive(Clone, Debug)]
+pub struct ExtrinsicDetails {
+  signature: Option<(GenericAddress, MultiSignature, Extra)>,
+  xt: Vec<u8>,
+  call: Dynamic,
+}
+
+impl ExtrinsicDetails {
+  pub fn is_signed(&mut self) -> bool {
+    self.signature.is_some()
+  }
+
+  pub fn signed_by(&mut self) -> Dynamic {
+    match &self.signature {
+      Some((MultiAddress::Id(addr), _, _)) => {
+        Dynamic::from(format!("{:?}", addr))
+      }
+      _ => {
+        Dynamic::UNIT
+      }
+    }
+  }
+
+  pub fn nonce(&mut self) -> Dynamic {
+    match &self.signature {
+      Some((_, _, extra)) => {
+        Dynamic::from(extra.nonce())
+      }
+      _ => {
+        Dynamic::UNIT
+      }
+    }
+  }
+
+  pub fn len(&mut self) -> i64 {
+    let len: Compact<u32> = Decode::decode(&mut &self.xt[..]).unwrap_or(0.into());
+    len.0 as i64
+  }
+
+  pub fn hash(&mut self) -> String {
+    let hash = blake2_256(self.xt.as_slice());
+    hex::encode(hash)
+  }
+
+  pub fn call(&mut self) -> Dynamic {
+    self.call.clone()
+  }
+
+  pub fn to_string(&mut self) -> String {
+    format!("{:?}", self)
+  }
+}
 
 #[derive(Clone)]
 pub struct ExtrinsicV4 {
@@ -89,6 +150,7 @@ impl ExtrinsicV4 {
   }
 
   pub fn decode_call(call_ty: &TypeRef, xt: &mut &[u8]) -> Result<Dynamic, Box<EvalAltResult>> {
+    let full_xt = xt.to_vec();
     // Decode Vec length.
     let _len: Compact<u32> = Decode::decode(xt).map_err(|e| e.to_string())?;
     // Version and signed flag.
@@ -98,12 +160,19 @@ impl ExtrinsicV4 {
       Err("Invalid EXTRINSIC_VERSION")?;
     }
 
-    if is_signed {
-      let _sig: (GenericAddress, MultiSignature, Extra) =
+    let signature = if is_signed {
+      let sig: (GenericAddress, MultiSignature, Extra) =
         Decode::decode(xt).map_err(|e| e.to_string())?;
-    }
+      Some(sig)
+    } else {
+      None
+    };
 
-    call_ty.decode(xt.to_vec())
+    Ok(Dynamic::from(ExtrinsicDetails {
+      signature,
+      xt: full_xt,
+      call: call_ty.decode(xt.to_vec())?,
+    }))
   }
 }
 
@@ -216,6 +285,14 @@ impl Block {
     self.header.parent_hash
   }
 
+  pub fn state_root(&mut self) -> BlockHash {
+    self.header.state_root
+  }
+
+  pub fn extrinsics_root(&mut self) -> BlockHash {
+    self.header.extrinsics_root
+  }
+
   pub fn block_number(&mut self) -> i64 {
     self.header.number as i64
   }
@@ -320,12 +397,23 @@ pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<BlockHash>("BlockHash")
     .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())
+    .register_fn("to_debug", |hash: &mut BlockHash| format!("{:?}", hash))
     .register_type_with_name::<Block>("Block")
     .register_get("extrinsics", Block::extrinsics)
     .register_fn("extrinsics_filtered", Block::extrinsics_filtered)
     .register_get("parent", Block::parent)
+    .register_get("state_root", Block::state_root)
+    .register_get("extrinsics_root", Block::extrinsics_root)
     .register_get("block_number", Block::block_number)
     .register_fn("to_string", Block::to_string)
+    .register_type_with_name::<ExtrinsicDetails>("ExtrinsicDetails")
+    .register_get("is_signed", ExtrinsicDetails::is_signed)
+    .register_get("signed_by", ExtrinsicDetails::signed_by)
+    .register_get("nonce", ExtrinsicDetails::nonce)
+    .register_get("len", ExtrinsicDetails::len)
+    .register_get("hash", ExtrinsicDetails::hash)
+    .register_get("decoded_call", ExtrinsicDetails::call)
+    .register_fn("to_string", ExtrinsicDetails::to_string)
     .register_type_with_name::<EventRecords>("EventRecords")
     .register_fn("to_string", EventRecords::to_string)
     .register_type_with_name::<EventRecord>("EventRecord")
