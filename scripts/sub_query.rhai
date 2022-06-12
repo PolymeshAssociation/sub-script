@@ -15,9 +15,15 @@ batch_size = if batch_size == () { 10 } else { parse_int(batch_size) };
 
 let end_block = start_block + count;
 
-let channel = new_channel();
-let sender = channel[0];
-let db_task = ENGINE.spawn_file_task_args("./scripts/sub_query_db_task.rhai", [channel[1]]);
+let db_senders = [];
+let db_tasks = [];
+
+print(`Start DBTasks`);
+for idx in range(0, 2) {
+	let channel = new_sync_channel(1000);
+	db_tasks += ENGINE.spawn_file_task_args("./scripts/sub_query_db_task.rhai", [idx, channel[1]]);
+	db_senders += channel[0];
+}
 
 fn process_block(metadata, hash, spec_version, block, events) {
 	let block_id = block.block_number;
@@ -281,6 +287,7 @@ while block_number <= end_block {
 		let batch = process_block(last_metadata, hash, cur_spec, block, events);
 
 		// Send batch to DB Task.
+		let sender = db_senders[counter % db_senders.len()];
 		sender.send(batch);
 
 		counter += 1;
@@ -291,9 +298,13 @@ while block_number <= end_block {
 	}
 }
 
-// Signal the DB Task to finish.
-sender.close();
-print("Wait for DB Task to finish.");
-db_task.join();
+// Signal the DB Tasks to finish.
+for db_sender in db_senders {
+	db_sender.close();
+}
+print("Wait for DB Tasks to finish.");
+for db_task in db_tasks {
+	db_task.join();
+}
 
 print(`end = ${block_number}`);

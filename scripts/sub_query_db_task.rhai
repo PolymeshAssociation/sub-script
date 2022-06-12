@@ -1,3 +1,5 @@
+// DBTask id.
+let task_id = ARG.shift();
 // Channel to receive batches.
 let channel = ARG.shift();
 
@@ -135,7 +137,7 @@ let total_events = 0;
 let blocks = [];
 let extrinsics = [];
 let events = [];
-print("DB Task started.");
+print(`DBTask[${task_id}] started.`);
 loop {
 	let block = channel.recv();
 	if block == () {
@@ -157,7 +159,7 @@ loop {
 	counter += 1;
 	if counter >= 1000 {
 		counter = 0;
-		print(`DbTask: Imported: blocks: ${total_blocks} extrinsics: ${total_extrinsics} events: ${total_events}`);
+		print(`DbTask[${task_id}]: Imported: blocks: ${total_blocks} extrinsics: ${total_extrinsics} events: ${total_events}`);
 	}
 }
 
@@ -168,5 +170,5 @@ if blocks.len() > 0 {
 	import_batch(blocks, extrinsics, events);
 }
 
-print(`DbTask: Imported: blocks: ${total_blocks} extrinsics: ${total_extrinsics} events: ${total_events}`);
-print(`DB Task closing`);
+print(`DbTask[${task_id}]: Imported: blocks: ${total_blocks} extrinsics: ${total_extrinsics} events: ${total_events}`);
+print(`DBTask[${task_id}] closing`);
