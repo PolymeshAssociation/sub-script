@@ -1620,19 +1620,22 @@ pub fn init_engine(
       },
     )
     .register_type_with_name::<TypeLookup>("TypeLookup")
+    .register_get("metadata", |lookup: &mut TypeLookup| {
+      lookup.get_metadata().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+    })
     .register_fn("dump_types", TypeLookup::dump_types)
     .register_fn("dump_unresolved", TypeLookup::dump_unresolved)
     .register_result_fn(
       "parse_named_type",
       |lookup: &mut TypeLookup, name: &str, def: &str| {
-        TypeLookup::parse_named_type(lookup, name, def)
+        lookup.parse_named_type(name, def)
       },
     )
     .register_result_fn("parse_type", |lookup: &mut TypeLookup, def: &str| {
-      TypeLookup::parse_type(lookup, def)
+      lookup.parse_type(def)
     })
     .register_fn("resolve", |lookup: &mut TypeLookup, name: &str| {
-      TypeLookup::resolve(lookup, name)
+      lookup.resolve(name)
     })
     .register_type_with_name::<Types>("Types")
     .register_type_with_name::<TypeMeta>("TypeMeta")

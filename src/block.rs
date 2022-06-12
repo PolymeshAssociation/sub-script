@@ -84,7 +84,8 @@ impl ExtrinsicDetails {
   pub fn signed_by(&mut self) -> Dynamic {
     match &self.signature {
       Some((MultiAddress::Id(addr), _, _)) => {
-        Dynamic::from(format!("{:?}", addr))
+        let raw: &[u8] = addr.as_ref();
+        Dynamic::from(hex::encode(raw))
       }
       _ => {
         Dynamic::UNIT
