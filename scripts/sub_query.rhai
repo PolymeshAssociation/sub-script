@@ -17,88 +17,117 @@ let end_block = start_block + count;
 
 const DB = Postgres.connect("host=comp002 port=5433 user=postgres password=postgres");
 
-fn build_upsert(db, schema, table, columns, on_conflict, has_created_at, has_updated_at) {
+fn build_upsert(db, schema, table, columns, on_conflict, has_created_at, has_updated_at, use_json) {
 	let NL = "\n";
 	let col_names = "";
 	let values = "";
+	let fields = "";
 	let updates = "";
+	let json_select = "SELECT ";
 	for (col, idx) in columns {
 		let val = `$${idx + 1}`;
 		let name = col;
+		let j_val = col;
+		let j_type = "json";
 		if type_of(col) == "array" {
 			name = col[0];
-			col[1].replace("$$", val);
-			val = col[1];
+			j_val = name;
+			if use_json {
+				j_type = col[1];
+				if col.len() > 2 {
+					col[2].replace("$$", j_val);
+					j_val = col[2];
+				}
+			} else {
+				col[1].replace("$$", val);
+				val = col[1];
+			}
 		}
 		let update = `  "${name}" = EXCLUDED."${name}"`;
 		if idx == 0 {
 			col_names += `"${name}"`;
+			json_select += j_val;
+			fields += `${name} ${j_type}`;
 			values += val;
 			updates += update;
 		} else {
 			col_names += `, "${name}"`;
+			json_select += `, ${j_val}`;
+			fields += `, ${name} ${j_type}`;
 			values += `, ${val}`;
 			updates += `,${NL}${update}`;
 		}
 		// insert a newline every 5 columns.
 		if idx % 5 == 4 {
 			col_names += NL;
+			fields += NL;
 			values += NL;
 		}
 	}
 	if has_created_at {
 		col_names += `, "created_at"`;
 		values += `, current_timestamp`;
+		json_select += `, current_timestamp`;
 	}
 	if has_updated_at {
 		col_names += `, "updated_at"`;
 		values += `, current_timestamp`;
+		json_select += `, current_timestamp`;
 		updates += `,${NL}  "updated_at" = EXCLUDED."updated_at"`;
 	}
+	let values = if use_json {
+		`${json_select} FROM json_to_recordset($1) AS x(${fields})`;
+	} else {
+		`VALUES(${values})`
+	};
 	let sql = `
-INSERT INTO "${schema}"."${table}"(${NL}${col_names}${NL}) VALUES(
-  ${values}
-)  ON CONFLICT (${on_conflict})
+INSERT INTO "${schema}"."${table}"(${NL}${col_names}${NL})
+${values}
+   ON CONFLICT (${on_conflict})
    DO UPDATE SET${NL}${updates}`;
 	//print(`sql: ${sql}`);
 	return db.prepare(sql);
 }
 
 const STMT_BLOCK = build_upsert(DB, "sub_script", "blocks", [
-	"id", "block_id", "parent_id", "hash", "parent_hash", "state_root", "extrinsics_root",
-  "count_extrinsics", "count_extrinsics_unsigned", "count_extrinsics_signed", "count_extrinsics_error", "count_extrinsics_success",
-  "count_events", "spec_version_id", ["datetime", "to_timestamp($$::INT8 / 1000)" ]
-], `"id"`, true, true);
+	["id", "text"], ["block_id", "int"], ["parent_id", "int"],
+	["hash", "text"], ["parent_hash", "text"], ["state_root", "text"], ["extrinsics_root", "text"],
+  ["count_extrinsics", "int"],
+	["count_extrinsics_unsigned", "int"], ["count_extrinsics_signed", "int"],
+	["count_extrinsics_error", "int"], ["count_extrinsics_success", "int"],
+  ["count_events", "int"],
+	["spec_version_id", "int"],
+	["datetime", "INT8", "to_timestamp($$::INT8 / 1000)" ]
+], `"block_id"`, true, true, true);
 
 const STMT_EXTRINSIC = build_upsert(DB, "sub_script", "extrinsics", [
-	"id", "block_id", "extrinsic_idx", "extrinsic_length",
-	"signed", "signedby_address", "address",
-	"module_id", "call_id", ["params_txt", "$$::JSONB"], "success", "nonce",
-	"extrinsic_hash", "spec_version_id",
-], `"id"`, true, true);
+	["id", "text"], ["block_id", "int"], ["extrinsic_idx", "int"], ["extrinsic_length", "int"],
+	["signed", "int"], ["signedby_address", "int"], ["address", "text"],
+	["module_id", "text"], ["call_id", "text"],
+	"params_txt",
+	["success", "int"], ["nonce", "int"],
+	["extrinsic_hash", "text"],
+	["spec_version_id", "int"],
+], `"block_id", "extrinsic_idx"`, true, true, true);
 
 const STMT_EVENT = build_upsert(DB, "sub_script", "events", [
-	"id", "block_id", "event_idx", "extrinsic_idx", "spec_version_id",
-	"module_id", "event_id", ["attributes_txt", "$$::JSONB"],
-	["event_arg_0", "$$::JSONB"],
-	["event_arg_1", "$$::JSONB"],
-	["event_arg_2", "$$::JSONB"],
-	["event_arg_3", "$$::JSONB"],
+	["id", "text"], ["block_id", "int"], ["event_idx", "int"], ["extrinsic_idx", "int"], ["spec_version_id", "int"],
+	["module_id", "text"], ["event_id", "text"], "attributes_txt",
+	"event_arg_0",
+	"event_arg_1",
+	"event_arg_2",
+	"event_arg_3",
 	"claim_type", "claim_scope", "claim_issuer", "claim_expiry",
 	"corporate_action_ticker", "fundraiser_offering_asset", "transfer_to",
-], `"id"`, true, true);
+], `"block_id", "event_idx"`, true, true, true);
 
-fn import_block(metadata, hash, spec_version, block, events) {
+fn process_block(metadata, hash, spec_version, block, events) {
 	let block_id = block.block_number;
 	let parent_id = block_id - 1;
 	let block_ts = 0;
 	let parent_hash = block.parent.to_debug();
 	let state_root = block.state_root.to_debug();
 	let extrinsics_root = block.extrinsics_root.to_debug();
-
-	//print(`block = ${block}`);
-	//print(`events = ${events}`);
-	//print(`parent_hash = ${parent_hash}`);
 
 	// Decode block extrinsics.
 	let extrinsics = block.extrinsics;
@@ -112,8 +141,14 @@ fn import_block(metadata, hash, spec_version, block, events) {
 	let count_events = events.len();
 	let count_extrinsics_error = 0;
 	let count_extrinsics_success = 0;
-	let extrinsic_events = [];
+	let processed_events = [];
 	for (event, event_idx) in events {
+		let row = #{
+			id: `${block_id}/${event_idx}`,
+			block_id: block_id,
+			event_idx: event_idx,
+			spec_version_id: spec_version,
+		};
 		//print(`events[${event_idx}] = ${event}`);
 
 		// Get the extrinsic index.
@@ -121,6 +156,7 @@ fn import_block(metadata, hash, spec_version, block, events) {
 		if event.phase != () {
 			extrinsic_idx = event.phase.ApplyExtrinsic;
 		}
+		row.extrinsic_idx = extrinsic_idx;
 		//print(`extrinsic_idx = ${extrinsic_idx}`);
 
 		// Get event module_id and event_id.
@@ -137,6 +173,8 @@ fn import_block(metadata, hash, spec_version, block, events) {
 				}
 			}
 		}
+		row.module_id = module_id;
+		row.event_id = event_id;
 		// Check for extrinsic success/failed.
 		let success = ();
 		if module_id == "System" {
@@ -155,50 +193,46 @@ fn import_block(metadata, hash, spec_version, block, events) {
 		if attributes == () {
 			attributes = [];
 		}
+		row.attributes_txt = attributes;
 
 		// Process event args.
 		let a_len = attributes.len();
-		let args_0 = if a_len >= 1 { attributes[0] } else { () };
-		let args_1 = if a_len >= 2 { attributes[1] } else { () };
-		let args_2 = if a_len >= 3 { attributes[2] } else { () };
-		let args_3 = if a_len >= 4 { attributes[3] } else { () };
-		let claim_type = ();
-		let claim_scope = ();
-		let claim_issuer = ();
-		let claim_expiry = ();
-		let corporate_action_ticker = ();
-		let fundraiser_offering_asset = ();
-		let transfer_to = ();
+		row.event_arg_0 = if a_len >= 1 { attributes[0] } else { () };
+		row.event_arg_1 = if a_len >= 2 { attributes[1] } else { () };
+		row.event_arg_2 = if a_len >= 3 { attributes[2] } else { () };
+		row.event_arg_3 = if a_len >= 4 { attributes[3] } else { () };
 
-		let row = [
-			`${block_id}/${event_idx}`, block_id, event_idx, extrinsic_idx,
-			spec_version, module_id.to_lower(), event_id, attributes,
-			args_0, args_1, args_2, args_3,
-			claim_type, claim_scope, claim_issuer, claim_expiry,
-			corporate_action_ticker, fundraiser_offering_asset, transfer_to,
-		];
-		// Insert event into DB.
-		let res = global::DB.execute(global::STMT_EVENT, row);
-		if res != 1 {
-			print(`Extrinsic import failed: res = ${res}`);
-		}
+		processed_events += row;
 	}
 
 	// Process extrinsics.
 	let count_extrinsics_unsigned = 0;
 	let count_extrinsics_signed = 0;
+	let processed_extrinsics = [];
 	for (extrinsic, idx) in extrinsics {
 		//print(`extrinsics[${idx}] = ${extrinsic}`);
-		let success = extrinsic_result[idx];
+		let row = #{
+			id: `${block_id}/${idx}`,
+			block_id: block_id,
+			extrinsic_idx: idx,
+			extrinsic_length: extrinsic.len,
+			spec_version_id: spec_version,
+			success: extrinsic_result[idx],
+			nonce: extrinsic.nonce,
+			extrinsic_hash: extrinsic.hash,
+		};
 
 		// Count signed/unsigned
 		let signed = if extrinsic.is_signed {
 			count_extrinsics_signed += 1;
+			row.address = extrinsic.signed_by;
 			1
 		} else {
 			count_extrinsics_unsigned += 1;
 			0
 		};
+		row.signed = signed;
+		row.signedby_address = signed;
 
 		// Get module/call id and parameters.
 		let decoded = extrinsic.decoded_call;
@@ -216,6 +250,8 @@ fn import_block(metadata, hash, spec_version, block, events) {
 		if params == () {
 			params = [];
 		}
+		row.module_id = module_id.to_lower();
+		row.call_id = call_id.to_lower();
 
 		// Get block timestamp.
 		if module_id == "Timestamp" && call_id == "set" {
@@ -227,33 +263,58 @@ fn import_block(metadata, hash, spec_version, block, events) {
 		for (p, idx) in params {
 			params[idx] = p.to_string();
 		}
+		row.params_txt = params;
 
-		let row = [
-			`${block_id}/${idx}`, block_id, idx, extrinsic.len, signed, signed, extrinsic.signed_by,
-			module_id.to_lower(), call_id.to_lower(), params, success,
-			extrinsic.nonce, extrinsic.hash,
-			spec_version
-		];
-		//print(`insert extrinsic: ${row}`);
-		// Insert extrinsic into DB.
-		let res = global::DB.execute(global::STMT_EXTRINSIC, row);
-		if res != 1 {
-			print(`Extrinsic import failed: res = ${res}`);
-		}
+		processed_extrinsics += row;
 	}
 
 	if count_extrinsics != 1 || count_events != 1 {
 		print(`${block.block_number}: ${hash}: spec: ${spec_version}: extrinsics = ${count_extrinsics}, events = ${count_events}`);
 	}
 
-	// Insert block into DB.
-	let res = global::DB.execute(global::STMT_BLOCK, [
-		`${block_id}`, block_id, parent_id, hash, parent_hash, state_root, extrinsics_root,
-		count_extrinsics, count_extrinsics_unsigned, count_extrinsics_signed, count_extrinsics_error, count_extrinsics_success,
-		count_events, spec_version, block_ts,
-	]);
-	if res != 1 {
+	let block_row = #{
+		id: `${block_id}`,
+		block_id: block_id,
+		parent_id: parent_id,
+		hash: hash,
+		parent_hash: parent_hash,
+		state_root: state_root,
+		extrinsics_root: extrinsics_root,
+		count_extrinsics: count_extrinsics,
+		count_extrinsics_unsigned: count_extrinsics_unsigned,
+		count_extrinsics_signed: count_extrinsics_signed,
+		count_extrinsics_error: count_extrinsics_error,
+		count_extrinsics_success: count_extrinsics_success,
+		count_events: count_events,
+		spec_version_id: spec_version,
+		datetime: block_ts,
+	};
+
+	return #{
+		block: block_row,
+		processed_extrinsics: processed_extrinsics,
+		processed_events: processed_events,
+	};
+}
+
+fn import_batch(blocks, extrinsics, events) {
+	//print(`Import batch: blocks: ${blocks.len()} extrinsics: ${extrinsics.len()} events: ${events.len()}`);
+	// Batch insert blocks into DB.
+	let res = global::DB.execute(global::STMT_BLOCK, [blocks]);
+	if res != blocks.len() {
 		print(`Block import failed: res = ${res}`);
+	}
+
+	// Batch insert extrinsic into DB.
+	let res = global::DB.execute(global::STMT_EXTRINSIC, [extrinsics]);
+	if res != extrinsics.len() {
+		print(`Extrinsic import failed: res = ${res}`);
+	}
+
+	// Batch insert events into DB.
+	let res = global::DB.execute(global::STMT_EVENT, [events]);
+	if res != events.len() {
+		print(`Extrinsic import failed: res = ${res}`);
 	}
 }
 
@@ -317,6 +378,10 @@ let counter = 0;
 // Pre-fetch a batch of blocks.
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);
 
+let processed_blocks = [];
+let processed_extrinsics = [];
+let processed_events = [];
+
 while block_number <= end_block {
 	let blocks = next_blocks;
 	block_number += blocks.len();
@@ -340,13 +405,29 @@ while block_number <= end_block {
 		let events = RPC.get_response_as_block_events(last_types, block.events);
 		let block = RPC.get_response_as_block(last_types, block.block);
 
-		import_block(last_metadata, hash, cur_spec, block, events);
+		let batch = process_block(last_metadata, hash, cur_spec, block, events);
+		processed_blocks += batch.block;
+		processed_extrinsics += batch.processed_extrinsics;
+		processed_events += batch.processed_events;
+
+		// Flush batch when a large number of event/extrinsics are waiting.
+		if processed_extrinsics.len() > 20 || processed_events.len() > 20 {
+			import_batch(processed_blocks, processed_extrinsics, processed_events);
+			processed_blocks = [];
+			processed_extrinsics = [];
+			processed_events = [];
+		}
 
 		counter += 1;
-		if counter > 1000 {
+		if counter >= 1000 {
 			counter = 0;
 			print(`number = ${block.block_number}`);
 		}
 	}
 }
+// Flush batch if any blocks are still waiting.
+if processed_blocks.len() > 0 {
+	import_batch(processed_blocks, processed_extrinsics, processed_events);
+}
+
 print(`end = ${block_number}`);
