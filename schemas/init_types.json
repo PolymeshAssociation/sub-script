@@ -3,19 +3,19 @@
   "BalanceOf<T>": "Balance",
   "BlockNumber": "u32",
   "BLockNumber": "BlockNumber",
-	"TaskAddress<BlockNumber>": "(BLockNumber, u32)",
+  "TaskAddress<BlockNumber>": "(BLockNumber, u32)",
   "schedule::Period<BlockNumber>": "(BlockNumber, u32)",
   "schedule::Priority": "u8",
-	"Scheduled<<T as Config>::Call, BlockNumber, PalletsOrigin, AccountId>": {
-		"maybe_id": "Option<Vec<u8>>",
-		"priority": "schedule::Priority",
-		"call": "Call",
-		"maybe_periodic": "Option<schedule::Period<BlockNumber>>",
-		"origin": "PalletsOrigin"
-	},
-	"Releases": {
-		"_enum": ["V1", "V2"]
-	},
+  "Scheduled<<T as Config>::Call, BlockNumber, PalletsOrigin, AccountId>": {
+    "maybe_id": "Option<Vec<u8>>",
+    "priority": "schedule::Priority",
+    "call": "Call",
+    "maybe_periodic": "Option<schedule::Period<BlockNumber>>",
+    "origin": "PalletsOrigin"
+  },
+  "Releases": {
+    "_enum": ["V1", "V2"]
+  },
   "AccountId": "[u8; 32]",
   "AccountId32": "AccountId",
   "AccountIndex": "u32",
@@ -27,6 +27,7 @@
   "H256": "[u8; 32]",
   "H512": "[u8; 64]",
   "Hash": "H256",
+  "CodeHash<T>": "Hash",
   "Sha256Hash": "H256",
   "MultiAddress": {
     "_enum": {
@@ -62,9 +63,9 @@
     "_enum": ["Yes", "No"]
   },
   "DispatchInfo": {
-		"weight": "Weight",
-		"class": "DispatchClass",
-		"pays_fee": "Pays"
+    "weight": "Weight",
+    "class": "DispatchClass",
+    "pays_fee": "Pays"
   },
   "DispatchResult": "Result<(), DispatchError>",
   "OpaqueTimeSlot": "Vec<u8>",
@@ -108,13 +109,13 @@
   },
   "DigestOf<T>": "Digest<Hash>",
   "ReportIdOf<T>": "Hash",
-	"EventIndex": "u32",
-	"EventRecords": "Vec<EventRecord<Event, Hash>>",
-	"EventRecord<Event, Hash>": {
-		"phase": "Phase",
-		"event": "Event",
-		"topics": "Vec<Hash>"
-	},
+  "EventIndex": "u32",
+  "EventRecords": "Vec<EventRecord<Event, Hash>>",
+  "EventRecord<Event, Hash>": {
+    "phase": "Phase",
+    "event": "Event",
+    "topics": "Vec<Hash>"
+  },
   "Header": {
     "parent_hash": "Hash",
     "number": "BlockNumber",
@@ -144,30 +145,30 @@
       "None": ""
     }
   },
-	"ElectionCompute": {
+  "ElectionCompute": {
     "_enum": {
-			"OnChain": "",
-			"Signed": "",
-			"Unsigned": ""
-		}
-	},
-	"FixedI64": "i64",
-	"FixedI128": "i128",
-	"FixedU128": "u128",
-	"Multiplier": "FixedU128",
-	"SetId": "u64",
-	"KeyTypeId": "[u8; 4]",
-	"Forcing": {
-		"_enum": ["NotForcing", "ForceNew", "ForceNone", "ForceAlways"]
-	},
-	"Phase": {
-		"_enum": {
-			"ApplyExtrinsic": "u32",
-			"Finalization": "",
-			"Initialization": ""
-		}
-	},
-	"Kind": "[u8; 16]",
+      "OnChain": "",
+      "Signed": "",
+      "Unsigned": ""
+    }
+  },
+  "FixedI64": "i64",
+  "FixedI128": "i128",
+  "FixedU128": "u128",
+  "Multiplier": "FixedU128",
+  "SetId": "u64",
+  "KeyTypeId": "[u8; 4]",
+  "Forcing": {
+    "_enum": ["NotForcing", "ForceNew", "ForceNone", "ForceAlways"]
+  },
+  "Phase": {
+    "_enum": {
+      "ApplyExtrinsic": "u32",
+      "Finalization": "",
+      "Initialization": ""
+    }
+  },
+  "Kind": "[u8; 16]",
   "Key": "Vec<u8>",
   "KeyValue": "(Vec<u8>, Vec<u8>)",
   "KeyOwnerProof": "MembershipProof",
@@ -178,8 +179,8 @@
   "ValidatorIndex_OffchainAccuracy": "(Compact<ValidatorIndex>, Compact<OffchainAccuracy>)",
   "ValidatorCount": "u32",
   "NominatorIndex": "u32",
-	"OffchainAccuracy": "PerU16",
-	"CompactAssignments": {
+  "OffchainAccuracy": "PerU16",
+  "CompactAssignments": {
     "votes1": "Vec<(Compact<NominatorIndex>, Compact<ValidatorIndex>)>",
     "votes2": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 1], Compact<ValidatorIndex>)>",
     "votes3": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 2], Compact<ValidatorIndex>)>",
@@ -196,7 +197,7 @@
     "votes14": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 13], Compact<ValidatorIndex>)>",
     "votes15": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 14], Compact<ValidatorIndex>)>",
     "votes16": "Vec<(Compact<NominatorIndex>, [ValidatorIndex_OffchainAccuracy; 15], Compact<ValidatorIndex>)>"
-	},
+  },
   "MembershipProof": {
     "session": "SessionIndex",
     "trie_nodes": "Vec<Vec<u8>>",
@@ -207,70 +208,70 @@
     "validators": "Compact<ValidatorIndex>",
     "nominators": "Compact<NominatorIndex>"
   },
-	"ValidatorPrefs": {
-		"commission": "Perbill",
-		"blocked": "bool"
-	},
-	"ExtendedBalance": "u128",
-	"ElectionScore": "[ExtendedBalance; 3]",
+  "ValidatorPrefs": {
+    "commission": "Perbill",
+    "blocked": "bool"
+  },
+  "ExtendedBalance": "u128",
+  "ElectionScore": "[ExtendedBalance; 3]",
   "Keys": "SessionKeys",
   "Proposal": "Call",
   "ProposalIndex": "u32",
-	"Index": "u32",
-	"RefCount": "u32",
-	"AccountData": {
-		"free": "Balance",
-		"reserved": "Balance",
-		"misc_frozen": "Balance",
-		"fee_frozen": "Balance"
-	},
-	"LockIdentifier": "[u8; 8]",
-	"BalanceLock<Balance>": {
-		"id": "LockIdentifier",
-		"amount": "Balance",
-		"reasons": "Reasons"
-	},
-	"IndividualExposure<AccountId, Balance>": {
-		"who": "AccountId",
-		"value": "Compact<Balance>"
-	},
-	"Exposure<AccountId, Balance>": {
-		"total": "Compact<Balance>",
-		"own": "Compact<Balance>",
-		"others": "Vec<IndividualExposure<AccountId, Balance>"
-	},
-	"FullIdentification": "Exposure<AccountId, Balance>",
-	"Identification": "FullIdentification",
-	"IdentificationTuple": "(ValidatorId, Identification)",
-	"Reasons": {
-		"_enum": ["Fee", "Misc", "All"]
-	},
-	"RawOrigin<AccountId>": {
-		"_enum": {
-			"Root": "",
-			"Signed": "AccountId",
-			"None": ""
-		}
-	},
-	"PalletsOrigin": "RawOrigin<AccountId>",
-	"AccountInfoWithDualRefCount": {
-		"nonce": "Index",
-		"consumers": "RefCount",
-		"providers": "RefCount",
-		"data": "AccountData"
-	},
-	"MultiSignature": {
-		"_enum": {
-			"Ed25519": "[u8; 64]",
-			"Sr25519": "[u8; 64]",
-			"Ecdsa": "[u8; 65]"
-		}
-	},
-	"Signature": "MultiSignature",
-	"AuthorityId": "[u8; 32]",
-	"AuthorityWeight": "u64",
+  "Index": "u32",
+  "RefCount": "u32",
+  "AccountData": {
+    "free": "Balance",
+    "reserved": "Balance",
+    "misc_frozen": "Balance",
+    "fee_frozen": "Balance"
+  },
+  "LockIdentifier": "[u8; 8]",
+  "BalanceLock<Balance>": {
+    "id": "LockIdentifier",
+    "amount": "Balance",
+    "reasons": "Reasons"
+  },
+  "IndividualExposure<AccountId, Balance>": {
+    "who": "AccountId",
+    "value": "Compact<Balance>"
+  },
+  "Exposure<AccountId, Balance>": {
+    "total": "Compact<Balance>",
+    "own": "Compact<Balance>",
+    "others": "Vec<IndividualExposure<AccountId, Balance>"
+  },
+  "FullIdentification": "Exposure<AccountId, Balance>",
+  "Identification": "FullIdentification",
+  "IdentificationTuple": "(ValidatorId, Identification)",
+  "Reasons": {
+    "_enum": ["Fee", "Misc", "All"]
+  },
+  "RawOrigin<AccountId>": {
+    "_enum": {
+      "Root": "",
+      "Signed": "AccountId",
+      "None": ""
+    }
+  },
+  "PalletsOrigin": "RawOrigin<AccountId>",
+  "AccountInfoWithDualRefCount": {
+    "nonce": "Index",
+    "consumers": "RefCount",
+    "providers": "RefCount",
+    "data": "AccountData"
+  },
+  "MultiSignature": {
+    "_enum": {
+      "Ed25519": "[u8; 64]",
+      "Sr25519": "[u8; 64]",
+      "Ecdsa": "[u8; 65]"
+    }
+  },
+  "Signature": "MultiSignature",
+  "AuthorityId": "[u8; 32]",
+  "AuthorityWeight": "u64",
   "<AuthorityId as RuntimeAppPublic>::Signature": "[u8; 64]",
-	"AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
+  "AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
   "Call": "RuntimeCall",
   "<T as Config>::Call": "Call",
   "<T as frame_system::Config>::Call": "Call"

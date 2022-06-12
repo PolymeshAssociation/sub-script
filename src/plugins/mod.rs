@@ -10,6 +10,9 @@ pub mod ledger;
 #[cfg(feature = "polymesh")]
 pub mod polymesh;
 
+#[cfg(feature = "pg")]
+pub mod postgres;
+
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   ledger::init_types_registry(types_registry)?;
 
@@ -28,6 +31,9 @@ pub fn init_engine(
 
   #[cfg(feature = "polymesh")]
   polymesh::init_engine(engine, globals, client)?;
+
+  #[cfg(feature = "pg")]
+  postgres::init_engine(engine, globals)?;
 
   Ok(())
 }
