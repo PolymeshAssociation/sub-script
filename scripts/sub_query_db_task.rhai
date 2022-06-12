@@ -162,6 +162,9 @@ loop {
 }
 
 if blocks.len() > 0 {
+	total_blocks += blocks.len();
+	total_extrinsics += extrinsics.len();
+	total_events += events.len();
 	import_batch(blocks, extrinsics, events);
 }
 
