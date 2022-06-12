@@ -82,7 +82,9 @@ pub fn eprint_error(input: &str, mut err: EvalAltResult) {
     let line = pos.line().unwrap();
     let line_no = format!("{}: ", line);
 
-    eprintln!("{}{}", line_no, lines[line - 1]);
+    if line < lines.len() {
+      eprintln!("{}{}", line_no, lines[line - 1]);
+    }
     eprintln!(
       "{:>1$} {2}",
       "^",
