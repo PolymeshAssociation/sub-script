@@ -281,7 +281,7 @@ while block_number <= end_block {
 		let batch = process_block(last_metadata, hash, cur_spec, block, events);
 
 		// Send batch to DB Task.
-		//sender.send(batch);
+		sender.send(batch);
 
 		counter += 1;
 		if counter >= 1000 {
