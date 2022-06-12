@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::thread::{spawn, JoinHandle};
+use std::sync::mpsc;
 
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
@@ -102,6 +103,53 @@ pub fn eprint_error(input: &str, mut err: EvalAltResult) {
   } else {
     // Specific position
     eprint_line(&lines, pos, &err.to_string())
+  }
+}
+
+type Sender = mpsc::Sender<Dynamic>;
+type Receiver = mpsc::Receiver<Dynamic>;
+
+#[derive(Clone)]
+pub struct TaskSender(Arc<Mutex<Option<Sender>>>);
+
+impl TaskSender {
+  fn new(sender: Sender) -> Dynamic {
+    Dynamic::from(Self(Arc::new(Mutex::new(Some(sender)))))
+  }
+
+  pub fn send(&mut self, val: Dynamic) -> Result<(), Box<EvalAltResult>> {
+    let sender = self.0.lock().unwrap();
+    if let Some(sender) = &*sender {
+      Ok(sender.send(val).map_err(|e| e.to_string())?)
+    } else {
+      Err(format!("Sender was closed"))?
+    }
+  }
+
+  pub fn close(&mut self) {
+    self.0.lock().unwrap().take();
+  }
+}
+
+#[derive(Clone)]
+pub struct TaskReceiver(Arc<Mutex<Option<Receiver>>>);
+
+impl TaskReceiver {
+  fn new(receiver: Receiver) -> Dynamic {
+    Dynamic::from(Self(Arc::new(Mutex::new(Some(receiver)))))
+  }
+
+  pub fn recv(&mut self) -> Dynamic {
+    let receiver = self.0.lock().unwrap();
+    if let Some(receiver) = &*receiver {
+      receiver.recv().unwrap_or(Dynamic::UNIT)
+    } else {
+      Dynamic::UNIT
+    }
+  }
+
+  pub fn close(&mut self) {
+    self.0.lock().unwrap().take();
   }
 }
 
@@ -272,7 +320,18 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
     .register_result_fn("spawn_file_task", SharedEngine::spawn_file_task)
     .register_result_fn("spawn_file_task_args", SharedEngine::spawn_file_task_args)
     .register_type_with_name::<TaskHandle>("TaskHandle")
-    .register_result_fn("join", TaskHandle::join);
+    .register_result_fn("join", TaskHandle::join)
+    .register_fn("new_channel", || {
+      let (sender, receiver) = mpsc::channel();
+      vec![TaskSender::new(sender), TaskReceiver::new(receiver)]
+    })
+    .register_type_with_name::<TaskSender>("TaskSender")
+    .register_result_fn("send", TaskSender::send)
+    .register_fn("close", TaskSender::close)
+    .register_type_with_name::<TaskReceiver>("TaskReceiver")
+    .register_fn("recv", TaskReceiver::recv)
+    .register_fn("close", TaskReceiver::close)
+    ;
 
   Ok(SharedEngine::new(engine))
 }
