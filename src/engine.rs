@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
 
-pub use rhai::{Dynamic, Engine, EvalAltResult, ParseError, Position, Scope, AST};
+pub use rhai::{Dynamic, Engine, EvalAltResult, ParseError, Position, Scope, AST, INT};
 
 #[cfg(not(feature = "no_optimize"))]
 use rhai::OptimizationLevel;
@@ -109,6 +109,7 @@ pub fn eprint_error(input: &str, mut err: EvalAltResult) {
 }
 
 type Sender = mpsc::Sender<Dynamic>;
+type SyncSender = mpsc::SyncSender<Dynamic>;
 type Receiver = mpsc::Receiver<Dynamic>;
 
 #[derive(Clone)]
@@ -116,6 +117,28 @@ pub struct TaskSender(Arc<Mutex<Option<Sender>>>);
 
 impl TaskSender {
   fn new(sender: Sender) -> Dynamic {
+    Dynamic::from(Self(Arc::new(Mutex::new(Some(sender)))))
+  }
+
+  pub fn send(&mut self, val: Dynamic) -> Result<(), Box<EvalAltResult>> {
+    let sender = self.0.lock().unwrap();
+    if let Some(sender) = &*sender {
+      Ok(sender.send(val).map_err(|e| e.to_string())?)
+    } else {
+      Err(format!("Sender was closed"))?
+    }
+  }
+
+  pub fn close(&mut self) {
+    self.0.lock().unwrap().take();
+  }
+}
+
+#[derive(Clone)]
+pub struct TaskSyncSender(Arc<Mutex<Option<SyncSender>>>);
+
+impl TaskSyncSender {
+  fn new(sender: SyncSender) -> Dynamic {
     Dynamic::from(Self(Arc::new(Mutex::new(Some(sender)))))
   }
 
@@ -327,9 +350,16 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
       let (sender, receiver) = mpsc::channel();
       vec![TaskSender::new(sender), TaskReceiver::new(receiver)]
     })
+    .register_fn("new_sync_channel", |bound: INT| {
+      let (sender, receiver) = mpsc::sync_channel(bound as usize);
+      vec![TaskSyncSender::new(sender), TaskReceiver::new(receiver)]
+    })
     .register_type_with_name::<TaskSender>("TaskSender")
     .register_result_fn("send", TaskSender::send)
     .register_fn("close", TaskSender::close)
+    .register_type_with_name::<TaskSyncSender>("TaskSyncSender")
+    .register_result_fn("send", TaskSyncSender::send)
+    .register_fn("close", TaskSyncSender::close)
     .register_type_with_name::<TaskReceiver>("TaskReceiver")
     .register_fn("recv", TaskReceiver::recv)
     .register_fn("close", TaskReceiver::close)
