@@ -695,37 +695,6 @@
         "RotatePrimaryKeyToSecondary": "Permissions"
       }
     },
-    "SmartExtensionType": {
-      "_enum": {
-        "TransferManager": "",
-        "Offerings": "",
-        "SmartWallet": "",
-        "Custom": "Vec<u8>"
-      }
-    },
-    "SmartExtensionName": "Text",
-    "SmartExtension": {
-      "extension_type": "SmartExtensionType",
-      "extension_name": "SmartExtensionName",
-      "extension_id": "AccountId",
-      "is_archive": "bool"
-    },
-    "MetaUrl": "Text",
-    "MetaDescription": "Text",
-    "MetaVersion": "u32",
-    "ExtVersion": "u32",
-    "TemplateMetadata": {
-      "url": "Option<MetaUrl>",
-      "se_type": "SmartExtensionType",
-      "usage_fee": "Balance",
-      "description": "MetaDescription",
-      "version": "MetaVersion"
-    },
-    "TemplateDetails": {
-      "instantiation_fee": "Balance",
-      "owner": "IdentityId",
-      "frozen": "bool"
-    },
     "AuthorizationNonce": "u64",
     "Percentage": "Permill",
     "RestrictionResult": {
@@ -779,9 +748,6 @@
         "ClaimOwnership": "(StatClaim, IdentityId, Percentage, Percentage)"
       }
     },
-    "BTreeSet<StatType>": "Vec<StatType>",
-    "BTreeSet<ScopeId>": "Vec<IdentityId>",
-    "BTreeSet<TransferCondition>": "Vec<TransferCondition>",
     "AssetTransferCompliance": {
       "paused": "bool",
       "requirements": "Vec<TransferCondition>"
@@ -1139,6 +1105,16 @@
       "default_withholding_tax": "Tax",
       "withholding_tax": "Vec<(IdentityId, Tax)>"
     },
+    "InitiateCorporateActionArgs": {
+      "ticker": "Ticker",
+      "kind": "CAKind",
+      "decl_date": "Moment",
+      "record_date": "Option<RecordDateSpec>",
+      "details": "CADetails",
+      "targets": "Option<TargetIdentities>",
+      "default_withholding_tax": "Option<Tax>",
+      "withholding_tax": "Option<Vec<(IdentityId, Tax)>>"
+    },
     "LocalCAId": "u32",
     "CAId": {
       "ticker": "Ticker",
@@ -1206,7 +1182,15 @@
         "Unclaimed": "Balance",
         "Claimed": ""
       }
-    }
+    },
+    "BTreeSet<Bytes>": "Vec<Bytes>",
+    "BTreeSet<StatUpdate>": "Vec<StatUpdate>",
+    "BTreeSet<StatType>": "Vec<StatType>",
+    "BTreeSet<TransferCondition>": "Vec<TransferCondition>",
+    "BTreeSet<IdentityId>": "Vec<IdentityId>",
+    "BTreeSet<Ticker>": "Vec<Ticker>",
+    "BTreeSet<PalletPermissions>": "Vec<PalletPermissions>",
+    "BTreeSet<PortfolioId>": "Vec<PortfolioId>"
   },
   "rpc": {
     "compliance": {
