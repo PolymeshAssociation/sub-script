@@ -196,6 +196,16 @@ impl TaskHandle {
   }
 }
 
+enum ScriptSource {
+  File(PathBuf),
+  Code(String),
+}
+
+struct Script {
+  ast: AST,
+  source: ScriptSource,
+}
+
 #[derive(Clone)]
 pub struct SharedEngine(Arc<RwLock<Engine>>);
 
@@ -204,15 +214,27 @@ impl SharedEngine {
     Self(Arc::new(RwLock::new(engine)))
   }
 
-  pub fn compile(&self, script: &str) -> Result<AST, Box<EvalAltResult>> {
-    Ok(self.0.read().unwrap().compile(script)?)
+  fn compile_source(&self, source: ScriptSource) -> Result<Script, Box<EvalAltResult>> {
+    let contents = match &source {
+      ScriptSource::File(path) => {
+        let (contents, _filename) = read_script(&path)?;
+        contents
+      }
+      ScriptSource::Code(contents) => contents.to_string(),
+    };
+    let ast = self.0.read().unwrap().compile(contents)?;
+    Ok(Script {
+      ast,
+      source,
+    })
   }
 
-  pub fn compile_file(&self, path: PathBuf) -> Result<AST, Box<EvalAltResult>> {
-    let (contents, filename) = read_script(&path)?;
-    let mut ast = self.0.read().unwrap().compile(contents)?;
-    ast.set_source(filename);
-    Ok(ast)
+  fn compile(&self, script: &str) -> Result<Script, Box<EvalAltResult>> {
+    self.compile_source(ScriptSource::Code(script.to_string()))
+  }
+
+  fn compile_file(&self, path: PathBuf) -> Result<Script, Box<EvalAltResult>> {
+    self.compile_source(ScriptSource::File(path))
   }
 
   pub fn run_ast_with_scope(&self, scope: &mut Scope, ast: &AST) -> Result<(), Box<EvalAltResult>> {
@@ -232,13 +254,13 @@ impl SharedEngine {
     scope: &mut Scope,
     path: PathBuf,
   ) -> Result<(), Box<EvalAltResult>> {
-    let ast = self.compile_file(path)?;
-    self.0.read().unwrap().run_ast_with_scope(scope, &ast)
+    let script = self.compile_file(path)?;
+    self.0.read().unwrap().run_ast_with_scope(scope, &script.ast)
   }
 
   pub fn spawn_task(&mut self, script: &str) -> Result<TaskHandle, Box<EvalAltResult>> {
-    let ast = self.compile(script)?;
-    self.spawn_task_ast_args(ast, Dynamic::UNIT)
+    let script = self.compile(script)?;
+    self.spawn_task_ast_args(script, Dynamic::UNIT)
   }
 
   pub fn spawn_task_args(
@@ -246,13 +268,13 @@ impl SharedEngine {
     script: &str,
     args: Dynamic,
   ) -> Result<TaskHandle, Box<EvalAltResult>> {
-    let ast = self.compile(script)?;
-    self.spawn_task_ast_args(ast, args)
+    let script = self.compile(script)?;
+    self.spawn_task_ast_args(script, args)
   }
 
   pub fn spawn_file_task(&mut self, file: &str) -> Result<TaskHandle, Box<EvalAltResult>> {
-    let ast = self.compile_file(file.into())?;
-    self.spawn_task_ast_args(ast, Dynamic::UNIT)
+    let script = self.compile_file(file.into())?;
+    self.spawn_task_ast_args(script, Dynamic::UNIT)
   }
 
   pub fn spawn_file_task_args(
@@ -266,13 +288,27 @@ impl SharedEngine {
 
   fn spawn_task_ast_args(
     &mut self,
-    ast: AST,
+    script: Script,
     args: Dynamic,
   ) -> Result<TaskHandle, Box<EvalAltResult>> {
     let engine = self.clone();
     let handle = spawn(move || {
       let mut scope = engine.new_scope(args);
-      engine.eval_ast_with_scope(&mut scope, &ast)
+      match engine.eval_ast_with_scope(&mut scope, &script.ast) {
+        Ok(v) => Ok(v),
+        Err(err) => {
+          let err_msg = format!("Task failed: {:?}", err);
+          match &script.source {
+            ScriptSource::File(path) => {
+              eprint_script_error(path, *err);
+            }
+            ScriptSource::Code(contents) => {
+              eprint_error(contents, *err);
+            }
+          }
+          Err(err_msg.into())
+        }
+      }
     });
     Ok(TaskHandle::new(handle))
   }
