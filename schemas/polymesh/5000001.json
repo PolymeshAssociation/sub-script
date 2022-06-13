@@ -1188,6 +1188,7 @@
     "BTreeSet<StatType>": "Vec<StatType>",
     "BTreeSet<TransferCondition>": "Vec<TransferCondition>",
     "BTreeSet<IdentityId>": "Vec<IdentityId>",
+    "BTreeSet<ScopeId>": "Vec<ScopeId>",
     "BTreeSet<Ticker>": "Vec<Ticker>",
     "BTreeSet<PalletPermissions>": "Vec<PalletPermissions>",
     "BTreeSet<PortfolioId>": "Vec<PortfolioId>"
