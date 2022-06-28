@@ -238,7 +238,7 @@
   "Exposure<AccountId, Balance>": {
     "total": "Compact<Balance>",
     "own": "Compact<Balance>",
-    "others": "Vec<IndividualExposure<AccountId, Balance>"
+    "others": "Vec<IndividualExposure<AccountId, Balance>>"
   },
   "FullIdentification": "Exposure<AccountId, Balance>",
   "Identification": "FullIdentification",
