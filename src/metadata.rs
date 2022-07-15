@@ -1503,6 +1503,10 @@ impl EventMetadata {
     Dynamic::from(args)
   }
 
+  fn index(&mut self) -> INT {
+    self.event_idx as INT
+  }
+
   fn name(&mut self) -> String {
     self.name.clone()
   }
@@ -2150,6 +2154,7 @@ pub fn init_engine(
     .register_fn("to_string", EventMetadata::to_string)
     .register_get("name", EventMetadata::name)
     .register_get("args", EventMetadata::args)
+    .register_get("index", EventMetadata::index)
     .register_get("title", EventMetadata::title)
     .register_get("docs", EventMetadata::docs)
     .register_type_with_name::<ConstMetadata>("ConstMetadata")
