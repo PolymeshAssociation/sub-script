@@ -1,7 +1,7 @@
 [package]
 name = "sub-script"
 version = "0.8.0"
-authors = ["Robert G. Jakabosky <rjakabosky+neopallium@neoawareness.com>"]
+authors = ["Robert G. Jakabosky <robert@polymesh.network>"]
 edition = "2018"
 license = "Apache-2.0"
 description = "Scripting tool for Substrate chains"
