@@ -919,6 +919,30 @@ impl KeyHasher {
     Ok(buf.into_inner())
   }
 
+  pub fn decode_map_key(
+    &self,
+    prefix: &StorageKey,
+    key: &StorageKey,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let (key_prefix, key) = key.0.split_at(prefix.0.len());
+    if key_prefix != prefix.as_ref() {
+      Err(format!("Key doesn't start with storage `prefix`."))?;
+    }
+
+    match self.type_hashers.len() {
+      0 => Err(format!("This storage isn't a map type."))?,
+      1 => {
+        let (ty, _) = &self.type_hashers[0];
+        Ok(ty.decode(key.to_vec())?)
+      }
+      2 => {
+        let (ty, _) = &self.type_hashers[1];
+        Ok(ty.decode(key.to_vec())?)
+      }
+      _ => Err(format!("This storage isn't a double map type."))?,
+    }
+  }
+
   pub fn encode_double_map_key(
     &self,
     key1: Dynamic,
@@ -1337,6 +1361,17 @@ impl StorageMetadata {
 
   pub fn decode_value(&self, data: Vec<u8>) -> Result<Dynamic, Box<EvalAltResult>> {
     self.value_ty.decode(data)
+  }
+
+  pub fn decode_map_key(
+    &self,
+    prefix: &StorageKey,
+    key: &StorageKey,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    match &self.key_hasher {
+      Some(hasher) => hasher.decode_map_key(prefix, key),
+      None => Err(format!("This storage type doesn't have keys.").into()),
+    }
   }
 
   fn name(&mut self) -> String {

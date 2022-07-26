@@ -6,6 +6,12 @@ use crate::client::Client;
 use crate::metadata::*;
 
 #[derive(Clone)]
+pub struct KeyValuePair {
+  key: Dynamic,
+  value: Dynamic,
+}
+
+#[derive(Clone)]
 pub struct StorageKeysPaged {
   client: Client,
   md: StorageMetadata,
@@ -37,6 +43,68 @@ impl StorageKeysPaged {
 
   fn has_more(&mut self) -> bool {
     !self.finished
+  }
+
+  fn next_keys(&mut self) -> Result<Dynamic, Box<EvalAltResult>> {
+    if self.finished {
+      // No more pages.
+      return Ok(Dynamic::UNIT);
+    }
+    let keys =
+      self
+        .client
+        .get_storage_keys_paged(&self.prefix, self.count, self.start_key.as_ref())?;
+    if keys.len() < self.count as usize {
+      self.finished = true;
+      if keys.len() == 0 {
+        // Empty page, no more storage values.
+        return Ok(Dynamic::UNIT);
+      }
+    } else {
+      self.start_key = keys.last().cloned();
+    }
+
+    let result = keys
+      .into_iter()
+      .map(|key| self.md.decode_map_key(&self.prefix, &key))
+      .collect::<Result<Vec<_>, _>>()?;
+    Ok(Dynamic::from(result))
+  }
+
+  fn next_key_values(&mut self) -> Result<Dynamic, Box<EvalAltResult>> {
+    if self.finished {
+      // No more pages.
+      return Ok(Dynamic::UNIT);
+    }
+    let keys =
+      self
+        .client
+        .get_storage_keys_paged(&self.prefix, self.count, self.start_key.as_ref())?;
+    if keys.len() < self.count as usize {
+      self.finished = true;
+      if keys.len() == 0 {
+        // Empty page, no more storage values.
+        return Ok(Dynamic::UNIT);
+      }
+    } else {
+      self.start_key = keys.last().cloned();
+    }
+
+    let result: Vec<Dynamic> = self
+      .client
+      .get_storage_by_keys(&keys, None)?
+      .into_iter()
+      .zip(&keys)
+      .map(|(val, key)| -> Result<Dynamic, Box<EvalAltResult>> {
+        let key = self.md.decode_map_key(&self.prefix, &key)?;
+        let value = match val {
+          Some(val) => self.md.decode_value(val.0)?,
+          None => Dynamic::UNIT,
+        };
+        Ok(Dynamic::from(KeyValuePair { key, value }))
+      })
+      .collect::<Result<_, _>>()?;
+    Ok(Dynamic::from(result))
   }
 
   fn next(&mut self) -> Result<Dynamic, Box<EvalAltResult>> {
@@ -198,10 +266,15 @@ pub fn init_engine(engine: &mut Engine, client: &Client, metadata: &Metadata) ->
     .register_result_fn("double_map", Storage::get_double_map)
     .register_result_fn("map_paged", Storage::get_map_paged)
     .register_result_fn("double_paged", Storage::get_double_paged)
+    .register_type_with_name::<KeyValuePair>("KeyValuePair")
+    .register_get("key", |pair: &mut KeyValuePair| pair.key.clone())
+    .register_get("value", |pair: &mut KeyValuePair| pair.value.clone())
     .register_type_with_name::<StorageKeysPaged>("StorageKeysPaged")
     .register_get("is_finished", StorageKeysPaged::is_finished)
     .register_get("has_more", StorageKeysPaged::has_more)
     .register_fn("set_page_count", StorageKeysPaged::set_page_count)
-    .register_result_fn("next", StorageKeysPaged::next);
+    .register_result_fn("next", StorageKeysPaged::next)
+    .register_result_fn("next_key_values", StorageKeysPaged::next_key_values)
+    .register_result_fn("next_keys", StorageKeysPaged::next_keys);
   Storage::new(client.clone(), metadata)
 }
