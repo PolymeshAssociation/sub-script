@@ -13,7 +13,10 @@ count = if count == () { 10 } else { parse_int(count) };
 let filter = ARG.shift();
 filter = if filter == () { "98002408011220a01a227d0b9f75830" } else { filter };
 
+
 let end_block = start_block - count;
+
+print(`start=${start_block}, end=${end_block}, filter=${filter}`);
 //let block_num = start_block;//2108133;
 let block = CLIENT.get_block_by_number(start_block);
 
