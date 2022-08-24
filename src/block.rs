@@ -26,21 +26,49 @@ pub fn hash_from_dynamic(val: Dynamic) -> Option<BlockHash> {
 }
 
 // Re-impl MultiAddress to support serde
-#[derive(
-  Clone, Debug, Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug)]
+#[cfg_attr(not(feature = "polymesh_v2"), derive(Encode, Decode))]
 pub enum MultiAddress<AccountId, AccountIndex> {
   /// It's an account ID (pubkey).
-  #[cfg_attr(feature = "polymesh_v2", codec(index = 0xff))]
   Id(AccountId),
   /// It's an account index.
-  Index(#[codec(compact)] AccountIndex),
+  Index(#[cfg_attr(not(feature = "polymesh_v2"), codec(compact))] AccountIndex),
   /// It's some arbitrary raw bytes.
   Raw(Vec<u8>),
   /// It's a 32 byte representation.
   Address32([u8; 32]),
   /// Its a 20 byte representation.
   Address20([u8; 20]),
+}
+
+#[cfg(feature = "polymesh_v2")]
+impl<AccountId: Encode, AccountIndex> Encode for MultiAddress<AccountId, AccountIndex> {
+  fn encode(&self) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 32);
+    match self {
+      MultiAddress::Id(id) => {
+        buf.push(0xff);
+        id.encode_to(&mut buf);
+      }
+      _ => {
+        unimplemented!("Index accounts are not supported.");
+      }
+    }
+    buf
+  }
+}
+
+#[cfg(feature = "polymesh_v2")]
+impl<AccountId: Decode, AccountIndex> Decode for MultiAddress<AccountId, AccountIndex> {
+  fn decode<I: parity_scale_codec::Input>(
+    input: &mut I,
+  ) -> Result<Self, parity_scale_codec::Error> {
+    if input.read_byte()? == 0xff {
+      Ok(Self::Id(AccountId::decode(input)?))
+    } else {
+      unimplemented!("Index accounts are not supported.");
+    }
+  }
 }
 
 impl<AccountId: Clone, AccountIndex> From<&AccountId> for MultiAddress<AccountId, AccountIndex> {

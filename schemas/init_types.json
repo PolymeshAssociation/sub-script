@@ -28,6 +28,7 @@
   "Hash": "H256",
   "CodeHash<T>": "Hash",
   "Sha256Hash": "H256",
+	"IndicesLookupSource": "MultiAddress",
   "MultiAddress": {
     "_enum": {
       "Id": "AccountId",
@@ -257,6 +258,11 @@
     "nonce": "Index",
     "consumers": "RefCount",
     "providers": "RefCount",
+    "data": "AccountData"
+  },
+  "AccountInfoWithRefCount": {
+    "nonce": "Index",
+    "refcount": "RefCount",
     "data": "AccountData"
   },
   "MultiSignature": {

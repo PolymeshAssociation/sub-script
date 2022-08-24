@@ -1694,7 +1694,10 @@ pub fn init_engine(
     types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
       let user = value.cast::<SharedUser>();
       // Encode variant idx.
+      #[cfg(not(feature = "polymesh_v2"))]
       data.encode(0u8); // MultiAddress::Id
+      #[cfg(feature = "polymesh_v2")]
+      data.encode(0xffu8); // MultiAddress::Id
       data.encode(user.public());
       Ok(())
     })?;
