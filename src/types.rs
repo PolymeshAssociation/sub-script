@@ -13,7 +13,6 @@ use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPri
 
 use sp_core::crypto::Ss58Codec;
 use sp_runtime::{generic::Era, MultiSignature};
-use sp_version::RuntimeVersion;
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
@@ -30,6 +29,7 @@ use super::metadata::EncodedArgs;
 use super::metadata::Metadata;
 use super::rpc::RpcHandler;
 use super::users::{AccountId, SharedUser};
+use crate::RuntimeVersion;
 
 #[cfg(feature = "v14")]
 pub fn is_type_compact(ty: &Type<PortableForm>) -> bool {
@@ -820,6 +820,7 @@ impl TypeMeta {
             }
             Dynamic::from(map)
           }
+          None if val == 0 => Dynamic::UNIT,
           None => {
             log::debug!(
               "invalid variant: {}, remaining: {:?}, variants={:?}",
@@ -1621,15 +1622,16 @@ pub fn init_engine(
     )
     .register_type_with_name::<TypeLookup>("TypeLookup")
     .register_get("metadata", |lookup: &mut TypeLookup| {
-      lookup.get_metadata().map(Dynamic::from).unwrap_or(Dynamic::UNIT)
+      lookup
+        .get_metadata()
+        .map(Dynamic::from)
+        .unwrap_or(Dynamic::UNIT)
     })
     .register_fn("dump_types", TypeLookup::dump_types)
     .register_fn("dump_unresolved", TypeLookup::dump_unresolved)
     .register_result_fn(
       "parse_named_type",
-      |lookup: &mut TypeLookup, name: &str, def: &str| {
-        lookup.parse_named_type(name, def)
-      },
+      |lookup: &mut TypeLookup, name: &str, def: &str| lookup.parse_named_type(name, def),
     )
     .register_result_fn("parse_type", |lookup: &mut TypeLookup, def: &str| {
       lookup.parse_type(def)

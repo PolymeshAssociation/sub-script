@@ -38,7 +38,6 @@ crossbeam-channel = "0.5"
 
 # substrate
 sp-core = { version = "6.0", default-features = false }
-sp-version = { version = "5.0", default-features = false }
 sp-runtime = { version = "6.0", default-features = false }
 frame-support = { version = "4.0.0-dev", default-features = false }
 frame-metadata = { version = "15.0.0", default-features = false, features = ["std"] }
@@ -73,6 +72,9 @@ bytes = { version = "1.1.0", optional = true }
 
 [features]
 default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p" ]
+
+# Enable support for very old Polymesh version.
+polymesh_v2 = []
 
 libp2p = [ "bs58", "libp2p-core" ]
 

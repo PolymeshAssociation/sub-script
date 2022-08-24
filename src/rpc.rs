@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use sp_core::storage::StorageData;
-use sp_version::RuntimeVersion;
 
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{from_value, json, Value};
@@ -17,6 +16,7 @@ use ws::{Factory, Handler, Message, WebSocket};
 
 use crate::block::SignedBlock;
 use crate::types::TypeLookup;
+use crate::RuntimeVersion;
 
 pub type ConnectionId = u16;
 pub type RequestId = u32;

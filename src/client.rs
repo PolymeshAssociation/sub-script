@@ -1,4 +1,5 @@
 use std::any::TypeId;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::{Arc, RwLock};
 
@@ -9,7 +10,6 @@ use sp_core::{
   Pair,
 };
 use sp_runtime::generic::Era;
-use sp_version::RuntimeVersion;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -29,7 +29,23 @@ use crate::users::{AccountId, User};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RuntimeVersion {
+  pub spec_name: String,
+  pub impl_name: String,
+  pub authoring_version: u32,
+  pub spec_version: u32,
+  pub impl_version: u32,
+  #[serde(default)]
+  pub transaction_version: u32,
+
+  #[serde(flatten)]
+  pub extra: HashMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainProperties {
+  #[serde(default)]
   pub ss58_format: u16,
   pub token_decimals: u32,
   pub token_symbol: String,

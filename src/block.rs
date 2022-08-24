@@ -2,7 +2,7 @@ use parity_scale_codec::{Compact, Decode, Encode};
 use sp_core::{hashing::blake2_256, H256};
 use sp_runtime::{
   generic::{self, Era},
-  traits, MultiAddress, MultiSignature,
+  traits, MultiSignature,
 };
 
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,58 @@ pub fn hash_from_dynamic(val: Dynamic) -> Option<BlockHash> {
   }
 }
 
+// Re-impl MultiAddress to support serde
+#[derive(
+  Clone, Debug, Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum MultiAddress<AccountId, AccountIndex> {
+  /// It's an account ID (pubkey).
+  #[cfg_attr(feature = "polymesh_v2", codec(index = 0xff))]
+  Id(AccountId),
+  /// It's an account index.
+  Index(#[codec(compact)] AccountIndex),
+  /// It's some arbitrary raw bytes.
+  Raw(Vec<u8>),
+  /// It's a 32 byte representation.
+  Address32([u8; 32]),
+  /// Its a 20 byte representation.
+  Address20([u8; 20]),
+}
+
+impl<AccountId: Clone, AccountIndex> From<&AccountId> for MultiAddress<AccountId, AccountIndex> {
+  fn from(other: &AccountId) -> Self {
+    Self::Id(other.clone())
+  }
+}
+
+impl<AccountId, AccountIndex> From<AccountId> for MultiAddress<AccountId, AccountIndex> {
+  fn from(other: AccountId) -> Self {
+    Self::Id(other)
+  }
+}
+
+impl<AccountId, AccountIndex> From<sp_runtime::MultiAddress<AccountId, AccountIndex>>
+  for MultiAddress<AccountId, AccountIndex>
+{
+  fn from(other: sp_runtime::MultiAddress<AccountId, AccountIndex>) -> Self {
+    match other {
+      sp_runtime::MultiAddress::Id(v) => Self::Id(v),
+      sp_runtime::MultiAddress::Index(v) => Self::Index(v),
+      sp_runtime::MultiAddress::Raw(v) => Self::Raw(v),
+      sp_runtime::MultiAddress::Address32(v) => Self::Address32(v),
+      sp_runtime::MultiAddress::Address20(v) => Self::Address20(v),
+    }
+  }
+}
+
+impl<AccountId: Clone, AccountIndex: Clone> From<&sp_runtime::MultiAddress<AccountId, AccountIndex>>
+  for MultiAddress<AccountId, AccountIndex>
+{
+  fn from(other: &sp_runtime::MultiAddress<AccountId, AccountIndex>) -> Self {
+    Self::from(other.clone())
+  }
+}
+
 pub type GenericAddress = MultiAddress<AccountId, ()>;
 
 pub type AdditionalSigned = (u32, u32, BlockHash, BlockHash, (), (), ());
@@ -38,11 +90,11 @@ impl Extra {
   }
 
   pub fn nonce(&self) -> u32 {
-    self.1.0
+    self.1.into()
   }
 
   pub fn tip(&self) -> u128 {
-    self.2.0
+    self.2.into()
   }
 }
 
@@ -87,20 +139,14 @@ impl ExtrinsicDetails {
         let raw: &[u8] = addr.as_ref();
         Dynamic::from(hex::encode(raw))
       }
-      _ => {
-        Dynamic::UNIT
-      }
+      _ => Dynamic::UNIT,
     }
   }
 
   pub fn nonce(&mut self) -> Dynamic {
     match &self.signature {
-      Some((_, _, extra)) => {
-        Dynamic::from(extra.nonce() as INT)
-      }
-      _ => {
-        Dynamic::UNIT
-      }
+      Some((_, _, extra)) => Dynamic::from(extra.nonce() as INT),
+      _ => Dynamic::UNIT,
     }
   }
 

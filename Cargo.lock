@@ -3590,7 +3590,6 @@ dependencies = [
  "smartstring",
  "sp-core",
  "sp-runtime",
- "sp-version",
  "structopt",
  "url",
  "ws",
