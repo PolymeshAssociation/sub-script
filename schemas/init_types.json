@@ -2,8 +2,7 @@
   "Balance": "u128",
   "BalanceOf<T>": "Balance",
   "BlockNumber": "u32",
-  "BLockNumber": "BlockNumber",
-  "TaskAddress<BlockNumber>": "(BLockNumber, u32)",
+  "TaskAddress<BlockNumber>": "(BlockNumber, u32)",
   "schedule::Period<BlockNumber>": "(BlockNumber, u32)",
   "schedule::Priority": "u8",
   "Scheduled<<T as Config>::Call, BlockNumber, PalletsOrigin, AccountId>": {
