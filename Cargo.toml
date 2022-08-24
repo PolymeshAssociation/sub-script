@@ -62,7 +62,7 @@ ledger-transport-hid = { version = "0.9.0", optional = true }
 ledger-apdu = { version = "0.9.0", optional = true }
 
 # Polymesh
-confidential_identity_v1 = { package = "confidential_identity", git = "https://github.com/PolymeshAssociation/cryptography.git", default-features = false, branch = "confidential-identity-v1", optional = true }
+confidential_identity_v1 = { version = "1.0.0", default-features = false, optional = true }
 polymesh-primitives = { git = "https://github.com/PolymeshAssociation/Polymesh", branch = "develop", default-features = false, optional = true }
 
 # Postgres
@@ -70,11 +70,32 @@ postgres = { version = "0.19", optional = true, features = [ "with-serde_json-1"
 postgres-types = { version = "0.2.3", optional = true, features = [ "derive" ] }
 bytes = { version = "1.1.0", optional = true }
 
+# MERCAT
+confidential_identity_core = { version = "1.0", optional = true, path = "../cryptography/confidential-identity-core" }
+mercat = { version = "1.0", optional = true, path = "../cryptography/mercat" }
+mercat-common = { version = "1.0", optional = true, path = "../cryptography/mercat/cli/common/" }
+base64 = { version = "0.12.1", optional = true }
+
+# Crypto
+rand = { version = "0.8", optional = true, features = ["getrandom", "alloc"], default-features = false }
+curve25519-dalek = { package = "curve25519-dalek-ng", optional = true, version = "4", default-features = false, features = ["nightly", "alloc"] }
+
 [features]
 default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p" ]
 
 # Enable support for very old Polymesh version.
 polymesh_v2 = []
+
+# MERCAT
+mercat = [
+	"polymesh",
+	"confidential_identity_core",
+	"dep:mercat",
+	"mercat-common",
+	"curve25519-dalek",
+	"base64",
+	"rand",
+]
 
 libp2p = [ "bs58", "libp2p-core" ]
 

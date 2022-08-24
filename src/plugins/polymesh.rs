@@ -17,6 +17,11 @@ use crate::client::Client;
 use crate::types::TypesRegistry;
 use crate::users::SharedUser;
 
+#[cfg(feature = "mercat")]
+use super::mercat;
+#[cfg(feature = "mercat")]
+use std::path::PathBuf;
+
 fn str_to_ticker(val: &str) -> Result<Ticker, Box<EvalAltResult>> {
   let res = if val.len() == 12 {
     Ticker::try_from(val.as_bytes())
@@ -31,11 +36,26 @@ fn str_to_ticker(val: &str) -> Result<Ticker, Box<EvalAltResult>> {
 }
 
 #[derive(Clone)]
-pub struct PolymeshUtils {}
+pub struct PolymeshUtils {
+  #[cfg(feature = "mercat")]
+  db_dir: PathBuf,
+  #[cfg(feature = "mercat")]
+  seed: Option<String>,
+}
 
 impl PolymeshUtils {
   pub fn new() -> Result<Self, Box<EvalAltResult>> {
-    Ok(Self {})
+    #[cfg(not(feature = "mercat"))]
+    return Ok(Self {});
+
+    #[cfg(feature = "mercat")]
+    {
+      mercat::init_mercat();
+      Ok(Self {
+        db_dir: PathBuf::from("./mercat_db/"),
+        seed: None,
+      })
+    }
   }
 
   pub fn make_cdd_claim(did: &mut IdentityId) -> Claim {
@@ -83,6 +103,41 @@ impl PolymeshUtils {
     // Verify the confidential claim.
     let is_valid = valid_proof_of_investor::v1::evaluate_claim(scope, &claim, &target, &proof);
     Ok(is_valid)
+  }
+}
+
+#[cfg(feature = "mercat")]
+impl PolymeshUtils {
+  pub fn set_seed(&mut self, seed: Option<String>) {
+    self.seed = seed;
+  }
+
+  pub fn seed(&mut self) -> Option<String> {
+    let seed = self.seed.get_or_insert_with(|| mercat::gen_seed());
+    Some(seed.clone())
+  }
+
+  pub fn mercat_create_account(
+    &mut self,
+    user: String,
+    ticker: String,
+    ticker_names: Dynamic,
+  ) -> Result<(), Box<EvalAltResult>> {
+    Ok(
+      mercat::process_create_account(
+        self.seed(),
+        self.db_dir.clone(),
+        user,
+        ticker,
+        ticker_names.into_typed_array()?,
+        /*
+          .into_iter()
+          .map(|d| d.into_string())
+          .collect::<Result<Vec<_>, _>>()?,
+        */
+      )
+      .map_err(|e| e.to_string())?,
+    )
   }
 }
 
@@ -176,6 +231,14 @@ pub fn init_engine(
       let s = String::from_utf8_lossy(ticker.as_slice());
       format!("{}", s)
     });
+
+  #[cfg(feature = "mercat")]
+  {
+    engine.register_result_fn(
+      "mercat_create_account",
+      PolymeshUtils::mercat_create_account,
+    );
+  }
 
   let utils = PolymeshUtils::new()?;
   globals.insert("PolymeshUtils".into(), Dynamic::from(utils.clone()));

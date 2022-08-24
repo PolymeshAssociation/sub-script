@@ -283,6 +283,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "bulletproofs"
+version = "4.0.0"
+source = "git+https://github.com/PolymeshAssociation/bulletproofs?branch=polymesh#def499bb056771bf4986034f8d09d7dc91078563"
+dependencies = [
+ "byteorder",
+ "clear_on_drop",
+ "curve25519-dalek-ng",
+ "digest 0.9.0",
+ "merlin 3.0.0",
+ "rand 0.8.5",
+ "rand_core 0.6.3",
+ "serde",
+ "serde_derive",
+ "sha3 0.9.1",
+ "subtle-ng",
+ "thiserror",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,6 +396,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clear_on_drop"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38508a63f4979f0048febc9966fadbd48e5dab31fd0ec6a3f151bbf4a74f7423"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "confidential_identity"
 version = "1.0.0"
 source = "git+https://github.com/PolymeshAssociation/cryptography.git?branch=confidential-identity-v1#7485147c0765c6a0048f561f360c1649b0d78429"
@@ -416,6 +444,49 @@ dependencies = [
  "scale-info",
  "serde",
  "serde_bytes",
+ "serde_json",
+ "sha3 0.9.1",
+ "sp-io",
+ "sp-std",
+ "zeroize",
+]
+
+[[package]]
+name = "confidential_identity_core"
+version = "1.0.0"
+dependencies = [
+ "blake2",
+ "bulletproofs 4.0.0",
+ "byteorder",
+ "criterion",
+ "curve25519-dalek-ng",
+ "merlin 3.0.0",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "rand_core 0.6.3",
+ "serde",
+ "sha3 0.9.1",
+ "sp-std",
+ "zeroize",
+]
+
+[[package]]
+name = "confidential_identity_v1"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a140dd3425471b44b3fc0ab89c6eb8e72c484de0aa80e138ea41b706dbff00f"
+dependencies = [
+ "blake2",
+ "byteorder",
+ "criterion",
+ "curve25519-dalek-ng",
+ "lazy_static",
+ "merlin 3.0.0",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.3",
+ "schnorrkel 0.10.2",
+ "serde",
  "serde_json",
  "sha3 0.9.1",
  "sp-io",
@@ -588,7 +659,7 @@ version = "1.0.0"
 source = "git+https://github.com/PolymeshAssociation/cryptography.git?branch=confidential-identity-v2#a01e852dee0b24b450294d92d0833786ac173149"
 dependencies = [
  "blake2",
- "bulletproofs",
+ "bulletproofs 2.0.1",
  "byteorder",
  "criterion",
  "curve25519-dalek-ng",
@@ -1683,6 +1754,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+
+[[package]]
 name = "lock_api"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1758,6 +1835,46 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71d96e3f3c0b6325d8ccd83c33b28acb183edcb6c67938ba104ec546854b0882"
 
 [[package]]
+name = "mercat"
+version = "1.0.0"
+dependencies = [
+ "byteorder",
+ "confidential_identity_core",
+ "criterion",
+ "failure",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "rand_core 0.6.3",
+ "serde",
+ "serde_json",
+ "sha3 0.9.1",
+ "sp-std",
+ "zeroize",
+]
+
+[[package]]
+name = "mercat-common"
+version = "1.0.0"
+dependencies = [
+ "base64 0.12.3",
+ "confidential_identity_core",
+ "curve25519-dalek-ng",
+ "failure",
+ "linked-hash-map",
+ "log",
+ "mercat",
+ "metrics",
+ "metrics-core",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "regex",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "yaml-rust",
+]
+
+[[package]]
 name = "merlin"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1780,6 +1897,21 @@ dependencies = [
  "rand_core 0.6.3",
  "zeroize",
 ]
+
+[[package]]
+name = "metrics"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51b70227ece8711a1aa2f99655efd795d0cff297a5b9fe39645a93aacf6ad39d"
+dependencies = [
+ "metrics-core",
+]
+
+[[package]]
+name = "metrics-core"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c064b3a1ff41f4bf6c91185c8a0caeccf8a8a27e9d0f92cc54cf3dbec812f48"
 
 [[package]]
 name = "miniz_oxide"
@@ -3563,10 +3695,13 @@ name = "sub-script"
 version = "0.8.0"
 dependencies = [
  "anyhow",
+ "base64 0.12.3",
  "bs58",
  "bytes 1.1.0",
- "confidential_identity 1.0.0",
+ "confidential_identity_core",
+ "confidential_identity_v1",
  "crossbeam-channel",
+ "curve25519-dalek-ng",
  "dashmap",
  "dotenv",
  "env_logger",
@@ -3578,10 +3713,13 @@ dependencies = [
  "ledger-transport-hid",
  "libp2p-core",
  "log",
+ "mercat",
+ "mercat-common",
  "parity-scale-codec",
  "polymesh-primitives",
  "postgres",
  "postgres-types",
+ "rand 0.8.5",
  "rhai",
  "rust_decimal",
  "scale-info",
@@ -4293,6 +4431,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b31594f29d27036c383b53b59ed3476874d518f0efb151b27a4c275141390e"
 dependencies = [
  "tap",
+]
+
+[[package]]
+name = "yaml-rust"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
+dependencies = [
+ "linked-hash-map",
 ]
 
 [[package]]

@@ -7,6 +7,9 @@ use crate::types::TypesRegistry;
 
 pub mod ledger;
 
+#[cfg(feature = "mercat")]
+pub mod mercat;
+
 #[cfg(feature = "polymesh")]
 pub mod polymesh;
 
