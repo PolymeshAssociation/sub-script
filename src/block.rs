@@ -291,6 +291,8 @@ pub enum TransactionStatus {
   Invalid,
 }
 
+pub type BlockHeader = generic::Header<u32, traits::BlakeTwo256>;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SignedBlock {
   pub block: Block,
@@ -300,7 +302,7 @@ pub struct SignedBlock {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Block {
   extrinsics: Vec<String>,
-  header: generic::Header<u32, traits::BlakeTwo256>,
+  header: BlockHeader,
   #[serde(skip)]
   pub call_ty: Option<TypeRef>,
 }
@@ -473,6 +475,9 @@ pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
     .register_type_with_name::<BlockHash>("BlockHash")
     .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())
     .register_fn("to_debug", |hash: &mut BlockHash| format!("{:?}", hash))
+    .register_type_with_name::<BlockHeader>("BlockHeader")
+    .register_get("block_number", |h: &mut BlockHeader| h.number as i64)
+    .register_fn("to_string", |h: &mut BlockHeader| format!("{h:#?}"))
     .register_type_with_name::<Block>("Block")
     .register_get("extrinsics", Block::extrinsics)
     .register_fn("extrinsics_filtered", Block::extrinsics_filtered)

@@ -14,7 +14,7 @@ use rhai::{Dynamic, Engine, EvalAltResult};
 
 use ws::{Factory, Handler, Message, WebSocket};
 
-use crate::block::SignedBlock;
+use crate::block::{BlockHeader, SignedBlock};
 use crate::types::TypeLookup;
 use crate::RuntimeVersion;
 
@@ -706,6 +706,13 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
     .register_result_fn(
       "get_update",
       |client: &mut RpcHandler, token: RequestToken| client.get_update::<Dynamic>(token),
+    )
+    .register_result_fn(
+      "get_update_as_header",
+      |client: &mut RpcHandler, token: RequestToken| {
+        let res = client.get_update::<BlockHeader>(token)?;
+        Ok(res.map(|rt| Dynamic::from(rt)).unwrap_or(Dynamic::UNIT))
+      },
     )
     .register_result_fn(
       "close_request",
