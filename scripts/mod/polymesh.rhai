@@ -56,6 +56,7 @@ fn get_balances(users) {
 }
 
 const TX_VERSION = CLIENT.get_transaction_version();
+const SPEC_VERSION = CLIENT.get_spec_version();
 
 fn key_records_did(rec) {
 	if rec == () {
@@ -132,7 +133,11 @@ fn mock_user(user, balance) {
 	let calls = [];
 	let did = get_did(user);
 	if did == () {
-		calls += TestUtils.mock_cdd_register_did(user);
+		if global::SPEC_VERSION < 3000 {
+			calls += Identity.mock_cdd_register_did(user);
+		} else {
+			calls += TestUtils.mock_cdd_register_did(user);
+		}
 	}
 	calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
 	let res = USER.Alice.submit(Utility.batch_optimistic(calls));
@@ -229,7 +234,11 @@ fn create_users(names, balance) {
 		let did = dids[idx];
 		let cur_bal = cur_bals[idx];
 		if did == () {
-			calls += TestUtils.mock_cdd_register_did(user);
+			if global::SPEC_VERSION < 3000 {
+				calls += Identity.mock_cdd_register_did(user);
+			} else {
+				calls += TestUtils.mock_cdd_register_did(user);
+			}
 		}
 		//print(`user: ${user}, cur: ${cur_bal}, bal: ${balance}`);
 		if cur_bal < balance {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Mutex};
-use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread::{spawn, JoinHandle};
 
 use std::path::PathBuf;
 use std::{fs::File, io::Read};
@@ -223,10 +223,7 @@ impl SharedEngine {
       ScriptSource::Code(contents) => contents.to_string(),
     };
     let ast = self.0.read().unwrap().compile(contents)?;
-    Ok(Script {
-      ast,
-      source,
-    })
+    Ok(Script { ast, source })
   }
 
   fn compile(&self, script: &str) -> Result<Script, Box<EvalAltResult>> {
@@ -255,7 +252,11 @@ impl SharedEngine {
     path: PathBuf,
   ) -> Result<(), Box<EvalAltResult>> {
     let script = self.compile_file(path)?;
-    self.0.read().unwrap().run_ast_with_scope(scope, &script.ast)
+    self
+      .0
+      .read()
+      .unwrap()
+      .run_ast_with_scope(scope, &script.ast)
   }
 
   pub fn spawn_task(&mut self, script: &str) -> Result<TaskHandle, Box<EvalAltResult>> {
@@ -357,7 +358,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   let users = users::init_engine(&mut engine, &client);
   let metadata = metadata::init_engine(&mut engine, &mut globals, &client)?;
   let storage = storage::init_engine(&mut engine, &client, &metadata);
-  plugins::init_engine(&mut engine, &mut globals, &client)?;
+  plugins::init_engine(&rpc, &mut engine, &mut globals, &client)?;
 
   // Setup globals for easy access.
   globals.insert("CLIENT".into(), Dynamic::from(client));
@@ -398,8 +399,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
     .register_fn("close", TaskSyncSender::close)
     .register_type_with_name::<TaskReceiver>("TaskReceiver")
     .register_fn("recv", TaskReceiver::recv)
-    .register_fn("close", TaskReceiver::close)
-    ;
+    .register_fn("close", TaskReceiver::close);
 
   Ok(SharedEngine::new(engine))
 }

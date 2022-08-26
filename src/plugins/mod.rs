@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rhai::{Dynamic, Engine, EvalAltResult};
 
 use crate::client::Client;
+use crate::rpc::RpcHandler;
 use crate::types::TypesRegistry;
 
 pub mod ledger;
@@ -22,10 +23,14 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
   #[cfg(feature = "polymesh")]
   polymesh::init_types_registry(types_registry)?;
 
+  #[cfg(feature = "mercat")]
+  mercat::init_types_registry(types_registry)?;
+
   Ok(())
 }
 
 pub fn init_engine(
+  _rpc: &RpcHandler,
   engine: &mut Engine,
   globals: &mut HashMap<String, Dynamic>,
   client: &Client,
@@ -34,6 +39,9 @@ pub fn init_engine(
 
   #[cfg(feature = "polymesh")]
   polymesh::init_engine(engine, globals, client)?;
+
+  #[cfg(feature = "mercat")]
+  mercat::init_engine(_rpc, engine, globals, client)?;
 
   #[cfg(feature = "pg")]
   postgres::init_engine(engine, globals)?;

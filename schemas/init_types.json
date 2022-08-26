@@ -278,6 +278,7 @@
   "<AuthorityId as RuntimeAppPublic>::Signature": "[u8; 64]",
   "AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
   "Call": "RuntimeCall",
+  "<T as Trait>::Call": "Call",
   "<T as Config>::Call": "Call",
   "<T as frame_system::Config>::Call": "Call"
 }

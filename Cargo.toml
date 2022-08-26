@@ -21,6 +21,14 @@ sp-version = { git = "https://github.com/PolymeshAssociation/substrate", branch 
 sp-runtime = { git = "https://github.com/PolymeshAssociation/substrate", branch = "polymesh-monthly-2022-05" }
 sp-runtime-interface = { git = "https://github.com/PolymeshAssociation/substrate", branch = "polymesh-monthly-2022-05" }
 
+polymesh-primitives = { git = "https://github.com/PolymeshAssociation/Polymesh", branch = "develop" }
+
+mercat = { path = "../cryptography/mercat" }
+mercat-common = { path = "../cryptography/mercat/cli/common/" }
+confidential_identity_core = { path = "../cryptography/confidential-identity-core" }
+confidential_identity_v1 = { path = "../cryptography/confidential-identity-v1" }
+#confidential_identity_v2 = { path = "../cryptography/confidential-identity-v2" }
+
 [dependencies]
 anyhow = "1.0.44"
 log = "0.4"
@@ -71,8 +79,8 @@ postgres-types = { version = "0.2.3", optional = true, features = [ "derive" ] }
 bytes = { version = "1.1.0", optional = true }
 
 # MERCAT
-confidential_identity_core = { version = "1.0", optional = true, path = "../cryptography/confidential-identity-core" }
-mercat = { version = "1.0", optional = true, path = "../cryptography/mercat" }
+confidential_identity_core = { version = "1.0", default-features = false, optional = true, path = "../cryptography/confidential-identity-core" }
+mercat = { version = "1.0", default-features = false, optional = true, path = "../cryptography/mercat" }
 mercat-common = { version = "1.0", optional = true, path = "../cryptography/mercat/cli/common/" }
 base64 = { version = "0.12.1", optional = true }
 
@@ -84,13 +92,11 @@ curve25519-dalek = { package = "curve25519-dalek-ng", optional = true, version =
 default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p" ]
 
 # Enable support for very old Polymesh version.
-polymesh_v2 = []
-
-# MERCAT
-mercat = [
+polymesh_v2 = [
 	"polymesh",
 	"confidential_identity_core",
-	"dep:mercat",
+	"mercat",
+	"mercat/std",
 	"mercat-common",
 	"curve25519-dalek",
 	"base64",
@@ -123,12 +129,14 @@ pg = [
 ]
 
 no_std = [
+	"confidential_identity_core/no_std",
 	"confidential_identity_v1/no_std",
 	"polymesh-primitives/no_std",
 	"polymesh-primitives/u64_backend",
 ]
 
 std = [
+	"confidential_identity_core/std",
 	"confidential_identity_v1/std",
 	"polymesh-primitives/std",
 	"polymesh-primitives/u64_backend",

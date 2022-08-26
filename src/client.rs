@@ -123,6 +123,10 @@ impl InnerClient {
     self.runtime_version.transaction_version as i64
   }
 
+  pub fn get_spec_version(&self) -> i64 {
+    self.runtime_version.spec_version as i64
+  }
+
   pub fn get_metadata(&self) -> Metadata {
     self.metadata.clone()
   }
@@ -415,6 +419,10 @@ impl Client {
 
   pub fn get_transaction_version(&self) -> i64 {
     self.inner.get_transaction_version()
+  }
+
+  pub fn get_spec_version(&self) -> i64 {
+    self.inner.get_spec_version()
   }
 
   pub fn get_metadata(&self) -> Metadata {
@@ -831,6 +839,9 @@ pub fn init_engine(
     )
     .register_fn("get_transaction_version", |client: &mut Client| {
       client.get_transaction_version()
+    })
+    .register_fn("get_spec_version", |client: &mut Client| {
+      client.get_spec_version()
     })
     .register_result_fn("submit_unsigned", Client::submit_unsigned)
     .register_type_with_name::<RuntimeVersion>("RuntimeVersion")
