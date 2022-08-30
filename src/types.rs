@@ -1187,6 +1187,16 @@ impl Types {
     let type_ref = id_to_ref.get(&id).unwrap();
     log::debug!("import_v14_type: {}", ty.path());
     let type_meta = match ty.type_def() {
+      TypeDef::Composite(s) if s.fields().len() == 1 && s.fields()[0].name().is_none() => {
+        // Special handling of tuples.
+        log::debug!("import_v14_type: Tuple: variants={:#?}", s.fields());
+        let ty_param = &s.fields()[0];
+        let elm_ty = id_to_ref
+          .get(&ty_param.ty().id())
+          .cloned()
+          .expect("Failed to resolve Tuple field");
+        TypeMeta::NewType(ty.path().ident().unwrap_or_else(|| "unamed".into()), elm_ty)
+      }
       TypeDef::Composite(s) => {
         let mut fields = IndexMap::new();
         log::debug!(
@@ -1194,11 +1204,12 @@ impl Types {
           ty.path(),
           s.fields()
         );
-        for f in s.fields() {
-          let name = f
-            .name()
-            .cloned()
-            .unwrap_or_else(|| format!("unnamed_{}", fields.len()));
+        let name_prefix = ty.path().ident();
+        for (idx, f) in s.fields().into_iter().enumerate() {
+          let name = f.name().cloned().unwrap_or_else(|| match &name_prefix {
+            Some(prefix) => format!("{prefix}_{idx}"),
+            None => format!("unamed_{idx}"),
+          });
           let field_ty = id_to_ref
             .get(&f.ty().id())
             .cloned()
@@ -1206,6 +1217,16 @@ impl Types {
           fields.insert(name.to_string(), field_ty);
         }
         TypeMeta::Struct(fields)
+      }
+      TypeDef::Variant(v) if v.variants().len() == 2 && ty.path().segments() == &["Option"] => {
+        log::debug!("import_v14_type: Option: variants={:#?}", v.variants());
+        // Special handling for `Option` types.
+        let ty_param = &v.variants()[1].fields()[0];
+        let elm_ty = id_to_ref
+          .get(&ty_param.ty().id())
+          .cloned()
+          .expect("Failed to resolve Option type");
+        TypeMeta::Option(elm_ty)
       }
       TypeDef::Variant(v) => {
         let mut variants = EnumVariants::new();
@@ -1302,6 +1323,15 @@ impl Types {
       let name = get_type_name(ty.ty(), types, true);
       log::debug!("import_v14_type: {:?} => {}", ty.id(), name);
       let type_ref = self.resolve(&name);
+
+      // Try mapping short name to full name.
+      let short_name = get_type_name(ty.ty(), types, false);
+      if !self.types.contains_key(&short_name) {
+        self.insert_meta(
+          &short_name,
+          TypeMeta::NewType(name.into(), type_ref.clone()),
+        );
+      }
       id_to_ref.insert(ty.id(), type_ref);
     }
 

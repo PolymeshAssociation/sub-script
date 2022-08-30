@@ -105,6 +105,18 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     types.custom_decode("IdentityId", |mut input, _is_compact| {
       Ok(Dynamic::from(IdentityId::decode(&mut input)?))
     })?;
+    types.custom_encode(
+      "polymesh_primitives::identity_id::IdentityId",
+      TypeId::of::<IdentityId>(),
+      |value, data| {
+        data.encode(value.cast::<IdentityId>());
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "polymesh_primitives::identity_id::IdentityId",
+      |mut input, _is_compact| Ok(Dynamic::from(IdentityId::decode(&mut input)?)),
+    )?;
     types.custom_encode("Ticker", TypeId::of::<ImmutableString>(), |value, data| {
       let value = value.cast::<ImmutableString>();
       let ticker = str_to_ticker(value.as_str())?;

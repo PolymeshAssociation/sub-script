@@ -94,13 +94,6 @@ default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p" ]
 # Enable support for very old Polymesh version.
 polymesh_v2 = [
 	"polymesh",
-	"confidential_identity_core",
-	"mercat",
-	"mercat/std",
-	"mercat-common",
-	"curve25519-dalek",
-	"base64",
-	"rand",
 ]
 
 libp2p = [ "bs58", "libp2p-core" ]
@@ -119,6 +112,13 @@ ledger = [
 polymesh = [
 	"confidential_identity_v1",
 	"polymesh-primitives",
+	"confidential_identity_core",
+	"mercat",
+	"mercat/std",
+	"mercat-common",
+	"curve25519-dalek",
+	"base64",
+	"rand",
 ]
 
 # Postgres

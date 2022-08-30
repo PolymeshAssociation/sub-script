@@ -464,6 +464,7 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_core 0.6.3",
+ "scale-info",
  "serde",
  "sha3 0.9.1",
  "sp-std",
@@ -487,7 +488,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3 0.9.1",
- "sp-core",
+ "sp-core-hashing",
  "sp-std",
  "zeroize",
 ]

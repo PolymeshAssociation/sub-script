@@ -476,6 +476,19 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       Ok(())
     })?;
 
+    types.custom_encode(
+      "polymesh_primitives::asset::Base64Vec",
+      TypeId::of::<ImmutableString>(),
+      |value, data| {
+        let value = value.cast::<ImmutableString>();
+        data.encode(value.as_str());
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "polymesh_primitives::asset::Base64Vec",
+      |mut input, _is_compact| Ok(Dynamic::from(String::decode(&mut input)?)),
+    )?;
     Ok(())
   });
   Ok(())
