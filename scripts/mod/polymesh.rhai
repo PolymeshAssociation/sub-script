@@ -22,6 +22,24 @@ fn get_accounts(users) {
 	return users.map(|u| u.acc);
 }
 
+// get current block number
+fn get_block_number() {
+	return STORAGE.value("System", "Number");
+}
+
+// Rhai[1.6.x]: sleep is broken.
+fn my_sleep(sec) {
+	sleep(sec);
+}
+
+// Wait X blocks.
+fn wait_blocks(n) {
+	let end_block = get_block_number() + n;
+	do {
+		my_sleep(1);
+	} while get_block_number() < end_block;
+}
+
 // get user's account info.
 fn get_account_info(user) {
 	return STORAGE.map("System", "Account", user.acc);
