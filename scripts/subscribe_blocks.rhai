@@ -46,7 +46,7 @@ loop {
 	let calls = block.extrinsics;
 	let c_count = calls.len();
 	print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
-	if c_count != 2 || e_count != 2 {
+	if c_count != 1 || e_count != 1 {
 		print(`- calls:`);
 		for xt in block.extrinsics {
 			print(`  -- ${xt.decoded_call}`);
