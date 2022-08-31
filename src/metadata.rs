@@ -1237,12 +1237,24 @@ impl StorageMetadata {
           (Some(hasher), value.clone())
         }
         hashers => {
-          let ty = NamedType::new_type(key.id(), types, lookup)?;
+          let fields = types
+            .resolve(key.id())
+            .ok_or_else(|| format!("Failed to resolve storage key type."))
+            .and_then(|ty| match ty.type_def() {
+              TypeDef::Tuple(t) => Ok(t.fields()),
+              def => Err(format!(
+                "Expected a Tuple for multi-key storage maps: got {def:?}"
+              )),
+            })?;
           let hasher = KeyHasher {
             type_hashers: hashers
               .iter()
-              .map(|hasher| (ty.clone(), hasher.into()))
-              .collect(),
+              .zip(fields)
+              .map(|(hasher, field)| -> Result<_, Box<EvalAltResult>> {
+                let ty = NamedType::new_type(field.id(), types, lookup)?;
+                Ok((ty, hasher.into()))
+              })
+              .collect::<Result<Vec<_>, _>>()?,
           };
           (Some(hasher), value.clone())
         }
