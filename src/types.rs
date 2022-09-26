@@ -580,9 +580,14 @@ impl TypeMeta {
             return Ok(());
           } else if type_id == TypeId::of::<ImmutableString>() {
             let s = value.into_immutable_string()?;
-            if s.len() == *len {
-              // Write fixed-length string as bytes.
+            if s.len() <= *len {
+              let fill = *len - s.len();
+              // Write string as bytes.
               data.write(s.as_bytes());
+              if fill > 0 {
+                // and Null-fill.
+                data.write(&vec![0; fill]);
+              }
             } else if s.len() >= (*len * 2) {
               // Maybe Hex-encoded string.
               let bytes = if s.starts_with("0x") {
