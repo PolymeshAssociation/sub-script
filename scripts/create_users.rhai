@@ -11,7 +11,7 @@ if prefix == () {
 let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let balance = ARG.shift();
-balance = if balance == () { 10.0 } else { parse_decimal(balance) };
+balance = if balance == () { 100000.0 } else { parse_decimal(balance) };
 let offset = ARG.shift();
 offset = if offset == () { 0 } else { parse_int(offset) };
 count += offset;

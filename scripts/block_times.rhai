@@ -12,7 +12,6 @@ count = if count == () { 10 } else { parse_int(count) };
 // Batch size.
 let batch_size = ARG.shift();
 batch_size = if batch_size == () { 10 } else { parse_int(batch_size) };
-let repeat = 400;
 
 let end_block = start_block + count;
 
@@ -31,10 +30,9 @@ fn get_block_hashes(block_number, end_block, batch_size) {
 	for (block, idx) in blocks {
 		let hash = RPC.get_response(block.hash);
 		block.hash = hash;
-		// Request RuntimeVersion, Block, and events.
+		// Request RuntimeVersion, Block.
 		block.rt = RPC.async_method("state_getRuntimeVersion",[hash]);
 		block.block = RPC.async_method("chain_getBlock",[hash]);
-		block.events = RPC.async_method("state_getStorage",["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7", hash]);
 		blocks[idx] = block;
 	}
 	return blocks;
@@ -55,14 +53,10 @@ let counter = 0;
 // Pre-fetch a batch of blocks.
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);
 
+let last_ts = ();
 while block_number <= end_block {
 	let blocks = next_blocks;
 	block_number += blocks.len();
-	if block_number >= end_block && repeat > 0 {
-		print(`------------------- Repeat scan: ${repeat}`);
-		repeat -= 1;
-		block_number = start_block;
-	}
 	if block_number <= end_block {
 		// Pre-fetch next batch.
 		next_blocks = get_block_hashes(block_number, end_block, batch_size);
@@ -78,32 +72,33 @@ while block_number <= end_block {
 			cur_spec = rt.specVersion;
 			print(`================= New spec version: ${cur_spec}`);
 		}
-		let events = RPC.get_response_as_block_events(last_types, block.events);
 		let block = RPC.get_response_as_block(last_types, block.block);
-
-		let e_count = 0;
-		if events != () {
-			e_count = events.len();
-		}
 
 		// Get decoded transactions from block.
 		let calls = block.extrinsics;
-		let c_count = calls.len();
-		if c_count != 1 || e_count != 1 {
-			/*
-			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
-			print(`- calls:`);
-			for xt in block.extrinsics {
-				print(`  -- ${xt.decoded_call}`);
+		let c_count = calls.len;
+		for xt in block.extrinsics {
+			let dec = xt.decoded_call;
+			if dec.Timestamp == () {
+				continue;
 			}
-			print(`events = ${events}`);
-			*/
-		} else {
-			counter += 1;
-			if counter > 1000 {
-				counter = 0;
-				print(`number = ${block.block_number}`);
+			let args = dec.Timestamp.set;
+			if type_of(args) != "array" {
+				continue;
 			}
+			let ts = args[0];
+			if last_ts != () {
+				let diff_ts = (ts - last_ts) / 1000.0;
+				if diff_ts > 6.01 || c_count > 2 {
+					print(`${block.block_number}: ts=${ts}, diff=${diff_ts}, calls=${c_count}`);
+				}
+			}
+			last_ts = ts;
+		}
+		counter += 1;
+		if counter > 1000 {
+			counter = 0;
+			print(`number = ${block.block_number}`);
 		}
 	}
 }
