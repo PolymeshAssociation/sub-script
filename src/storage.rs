@@ -2,6 +2,7 @@ use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use sp_core::storage::StorageKey;
 
+use crate::BlockHash;
 use crate::client::Client;
 use crate::metadata::*;
 
@@ -157,8 +158,9 @@ impl Storage {
     &self,
     md: &StorageMetadata,
     key: StorageKey,
+    at_block: Option<BlockHash>,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
-    match self.client.get_storage_by_key(key, None)? {
+    match self.client.get_storage_by_key(key, at_block)? {
       Some(value) => md.decode_value(value.0),
       None => Ok(Dynamic::UNIT),
     }
@@ -168,10 +170,28 @@ impl Storage {
     &self,
     md: &StorageMetadata,
     keys: &[StorageKey],
+    at_block: Option<BlockHash>,
   ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
     self
       .client
-      .get_storage_by_keys(keys, None)?
+      .get_storage_by_keys(keys, at_block)?
+      .into_iter()
+      .map(|val| match val {
+        Some(val) => md.decode_value(val.0),
+        None => Ok(Dynamic::UNIT),
+      })
+      .collect()
+  }
+
+  fn get_key_at_blocks(
+    &self,
+    md: &StorageMetadata,
+    key: StorageKey,
+    at_blocks: Vec<BlockHash>,
+  ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
+    self
+      .client
+      .get_storage_key_at_blocks(key, at_blocks)?
       .into_iter()
       .map(|val| match val {
         Some(val) => md.decode_value(val.0),
@@ -188,6 +208,41 @@ impl Storage {
     Ok(StorageKeysPaged::new(&self.client, &md, prefix))
   }
 
+  pub fn get_value_at_block(
+    &mut self,
+    mod_name: &str,
+    storage_name: &str,
+    at_block: BlockHash,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let md = self.metadata.get_storage(mod_name, storage_name)?;
+    let key = md.get_value_key()?;
+    self.get_by_key(md, key, Some(at_block))
+  }
+
+  pub fn get_value_at_blocks(
+    &mut self,
+    mod_name: &str,
+    storage_name: &str,
+    at_blocks: Dynamic,
+  ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
+    let md = self.metadata.get_storage(mod_name, storage_name)?;
+    let key = md.get_value_key()?;
+    let at_blocks = at_blocks.into_typed_array::<BlockHash>()?;
+    self.get_key_at_blocks(md, key, at_blocks)
+  }
+
+  pub fn get_map_at_block(
+    &mut self,
+    mod_name: &str,
+    storage_name: &str,
+    key: Dynamic,
+    at_block: BlockHash,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let md = self.metadata.get_storage(mod_name, storage_name)?;
+    let key = md.get_map_key(key)?;
+    self.get_by_key(md, key, Some(at_block))
+  }
+
   pub fn get_value(
     &mut self,
     mod_name: &str,
@@ -195,7 +250,7 @@ impl Storage {
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let key = md.get_value_key()?;
-    self.get_by_key(md, key)
+    self.get_by_key(md, key, None)
   }
 
   pub fn get_map(
@@ -206,7 +261,7 @@ impl Storage {
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let key = md.get_map_key(key)?;
-    self.get_by_key(md, key)
+    self.get_by_key(md, key, None)
   }
 
   pub fn get_map_paged(
@@ -217,6 +272,21 @@ impl Storage {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let prefix = md.get_map_prefix()?;
     self.get_keys_paged(md, prefix)
+  }
+
+  pub fn get_map_keys_at_block(
+    &mut self,
+    mod_name: &str,
+    storage_name: &str,
+    keys: Vec<Dynamic>,
+    at_block: BlockHash,
+  ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
+    let md = self.metadata.get_storage(mod_name, storage_name)?;
+    let keys = keys
+      .into_iter()
+      .map(|k| md.get_map_key(k))
+      .collect::<Result<Vec<_>, Box<EvalAltResult>>>()?;
+    self.get_by_keys(md, &keys, Some(at_block))
   }
 
   pub fn get_map_keys(
@@ -230,7 +300,7 @@ impl Storage {
       .into_iter()
       .map(|k| md.get_map_key(k))
       .collect::<Result<Vec<_>, Box<EvalAltResult>>>()?;
-    self.get_by_keys(md, &keys)
+    self.get_by_keys(md, &keys, None)
   }
 
   pub fn get_double_map(
@@ -242,7 +312,7 @@ impl Storage {
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let key = md.get_double_map_key(key1, key2)?;
-    self.get_by_key(md, key)
+    self.get_by_key(md, key, None)
   }
 
   pub fn get_double_paged(
@@ -261,8 +331,12 @@ pub fn init_engine(engine: &mut Engine, client: &Client, metadata: &Metadata) ->
   engine
     .register_type_with_name::<Storage>("Storage")
     .register_result_fn("value", Storage::get_value)
+    .register_result_fn("value_at_block", Storage::get_value_at_block)
+    .register_result_fn("value_at_blocks", Storage::get_value_at_blocks)
     .register_result_fn("map", Storage::get_map)
     .register_result_fn("map_keys", Storage::get_map_keys)
+    .register_result_fn("map_at_block", Storage::get_map_at_block)
+    .register_result_fn("map_keys_at_block", Storage::get_map_keys_at_block)
     .register_result_fn("double_map", Storage::get_double_map)
     .register_result_fn("map_paged", Storage::get_map_paged)
     .register_result_fn("double_paged", Storage::get_double_paged)

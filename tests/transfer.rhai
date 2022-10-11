@@ -1,17 +1,11 @@
-// Try batching mock cdd registrations.
-
-print("Batching: Mock CDD");
+// Test POLYX transfer.
 
 // Use Alice for mocking cdd.
 let alice = USER.Alice;
 
 // Test user
-let user = USER.Bob;//Test123;
+let user = USER.Test123;
 
-//alice.submit(TestUtils.mock_cdd_register_did(user));
-
-let tx = Balances.transfer(user, 5.0);
-print(`tx = ${tx}`);
-let res = alice.submit(tx);
+let res = alice.submit(Balances.transfer(user, 5.0));
 print(`call result = ${res}`);
 print(`events = ${res.events}`);

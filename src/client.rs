@@ -238,6 +238,22 @@ impl InnerClient {
     self.rpc.get_responses(tokens.as_slice())
   }
 
+  pub fn get_storage_key_at_blocks(
+    &self,
+    key: StorageKey,
+    at_blocks: Vec<BlockHash>,
+  ) -> Result<Vec<Option<StorageData>>, Box<EvalAltResult>> {
+    let tokens: Vec<RequestToken> = at_blocks
+      .into_iter()
+      .map(|at_block| {
+        self
+          .rpc
+          .async_call_method("state_getStorage", json!([&key, at_block]))
+      })
+      .collect::<Result<Vec<_>, Box<EvalAltResult>>>()?;
+    self.rpc.get_responses(tokens.as_slice())
+  }
+
   pub fn get_storage_value(
     &self,
     module: &str,
@@ -486,6 +502,14 @@ impl Client {
     at_block: Option<BlockHash>,
   ) -> Result<Vec<Option<StorageData>>, Box<EvalAltResult>> {
     self.inner.get_storage_by_keys(keys, at_block)
+  }
+
+  pub fn get_storage_key_at_blocks(
+    &self,
+    key: StorageKey,
+    at_blocks: Vec<BlockHash>,
+  ) -> Result<Vec<Option<StorageData>>, Box<EvalAltResult>> {
+    self.inner.get_storage_key_at_blocks(key, at_blocks)
   }
 
   pub fn get_storage_value(
