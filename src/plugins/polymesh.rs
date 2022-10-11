@@ -183,6 +183,8 @@ pub fn init_engine(
     .register_type_with_name::<Claim>("Claim")
     .register_type_with_name::<v1::InvestorZKProofData>("InvestorZKProofData")
     .register_type_with_name::<IdentityId>("IdentityId")
+    .register_fn("==", |v1: IdentityId, v2: IdentityId| v1 == v2)
+    .register_fn("!=", |v1: IdentityId, v2: IdentityId| v1 != v2)
     .register_fn("to_string", |did: &mut IdentityId| format!("{:?}", did))
     .register_type_with_name::<InvestorUid>("InvestorUid")
     .register_fn("to_string", |uid: &mut InvestorUid| format!("{:?}", uid))

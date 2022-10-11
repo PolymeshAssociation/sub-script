@@ -123,6 +123,7 @@ fn dev_users() {
 		USER.Charlie,
 		USER.Dave,
 		USER.Eve,
+		USER.Testnet_CDD,
 	];
 }
 
@@ -132,18 +133,31 @@ fn get_sudo_user() {
 
 	let key = STORAGE.value("Sudo", "Key");
 	let sudo = USER.find_by_account(key);
-	if sudo == () {
-		// Fallback to Alice.
-		sudo = USER.Alice;
-	}
 	return sudo;
 }
 
 const SUDO_USER = get_sudo_user();
 
 fn get_cdd_provider() {
-	// TODO:
-	let provider = global::SUDO_USER;
+	// Build list of keys to search for a CDD provider.
+	let keys = [];
+	if global::SUDO_USER != () {
+		keys += global::SUDO_USER;
+	}
+	keys += dev_users();
+
+	// CddServiceProviders.
+	let provider_dids = STORAGE.value("CddServiceProviders", "ActiveMembers");
+	let provider = ();
+
+	let dids = get_dids(keys);
+	for (did, idx) in dids {
+		if did in provider_dids {
+			provider = keys[idx];
+			break;
+		}
+	}
+
 	return provider;
 }
 
@@ -161,8 +175,7 @@ fn mock_user(user, balance) {
 		}
 	}
 	calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
-	let res = USER.Alice.submit(Utility.batch_optimistic(calls));
-	//let res = USER.Eve.submit(Utility.batch_optimistic(calls));
+	let res = global::CDD_PROVIDER.submit(Utility.batch_optimistic(calls));
 	return res.is_in_block;
 }
 
@@ -196,10 +209,9 @@ fn create_keys(names, balance) {
 		let key = USER[name];
 		keys += key;
 	}
-	if balance != () {
-		// sudo user.
-		let sudo_user = global::SUDO_USER;
-
+	// sudo user.
+	let sudo_user = global::SUDO_USER;
+	if balance != () && sudo_user != () {
 		// Query balances.
 		let cur_bals = get_balances(keys);
 
@@ -237,8 +249,13 @@ fn create_users_batch(prefix, offset, count, balance) {
 // Create users.
 fn create_users(names, balance) {
 	let users = [];
-	// sudo user.
-	let sudo_user = global::SUDO_USER;
+	// cdd/sudo user.
+	let cdd_user = global::SUDO_USER;
+	let has_sudo = true;
+	if cdd_user == () {
+		has_sudo = false;
+		cdd_user = global::CDD_PROVIDER;
+	}
 
 	// Generate users.
 	for name in names {
@@ -252,9 +269,6 @@ fn create_users(names, balance) {
 
 	let results = [];
 	let calls = [];
-	//for name in names {
-	//	let user = USER[name];
-	//	users += user;
 	for (user, idx) in users {
 		let did = dids[idx];
 		let cur_bal = cur_bals[idx];
@@ -266,18 +280,18 @@ fn create_users(names, balance) {
 			}
 		}
 		//print(`user: ${user}, cur: ${cur_bal}, bal: ${balance}`);
-		if cur_bal < (balance - 100.0) {
+		if has_sudo && cur_bal < (balance - 100.0) {
 			calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
 		}
 		if calls.len() > 200 {
-			results += sudo_user.submit(Utility.batch_optimistic(calls));
+			results += cdd_user.submit(Utility.batch_optimistic(calls));
 			calls = [];
 		}
 	}
 
 	// Final batch if there are still calls to make.
 	if calls.len() > 0 {
-		results += sudo_user.submit(Utility.batch_optimistic(calls));
+		results += cdd_user.submit(Utility.batch_optimistic(calls));
 	}
 	print("CreateUsers: Wait for batch results");
 	wait_for_in_block(results);
@@ -305,7 +319,7 @@ fn tickers_to_issuers(tickers) {
 
 // Create assets.
 fn create_assets(tickers, asset_type, supply, disable_iu) {
-	let issuers = create_users(tickers_to_issuers(tickers), 10000.0);
+	let issuers = create_users(tickers_to_issuers(tickers), 100000000.0);
 
 	let results = [];
 	for (ticker, idx) in tickers {
