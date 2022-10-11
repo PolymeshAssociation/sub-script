@@ -16,7 +16,8 @@ for mod in modules {
 	for func in funcs {
 		let name = func.name;
 		let idx = func.index;
-	  print(`"Function","${mod_name}","${idx}","${name}"`);
+		let docs = func.title;
+	  print(`"Function","${mod_name}","${idx}","${name}", "${docs}"`);
 		//print(`  Func: ${idx} -> ${name}`);
 	}
 	let events = mod.events;
@@ -26,7 +27,8 @@ for mod in modules {
 	for event in events {
 		let name = event.name;
 		let idx = event.index;
-	  print(`"Event","${mod_name}","${idx}","${name}"`);
+		let docs = event.title;
+	  print(`"Event","${mod_name}","${idx}","${name}", "${docs}"`);
 		//print(`  Event: ${idx} -> ${name}`);
 	}
 	let errors = mod.errors;
@@ -36,7 +38,8 @@ for mod in modules {
 	for error in errors {
 		let name = error.name;
 		let idx = error.index;
-	  print(`"Error","${mod_name}","${idx}","${name}"`);
+		let docs = error.title;
+	  print(`"Error","${mod_name}","${idx}","${name}", "${docs}"`);
 		//print(`  Error: ${idx} -> ${name}`);
 	}
 }

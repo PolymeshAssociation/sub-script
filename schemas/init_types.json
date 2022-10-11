@@ -15,6 +15,13 @@
   "Releases": {
     "_enum": ["V1", "V2"]
   },
+	"CallOrHashOf<T>": "MaybeHashed<Call, Hash>",
+	"MaybeHashed<Call, Hash>": {
+    "_enum": {
+      "Value": "Call",
+      "Hash": "Hash"
+    }
+	},
   "AccountId": "[u8; 32]",
   "AccountId32": "AccountId",
   "AccountIndex": "u32",
