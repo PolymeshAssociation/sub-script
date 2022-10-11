@@ -468,7 +468,6 @@
       "proof_scope_id_cdd_id_match": "ZkProofData",
       "scope_id": "RistrettoPoint"
     },
-    "CustomClaimTypeId": "u32",
     "Claim": {
       "_enum": {
         "Accredited": "Scope",
@@ -482,8 +481,7 @@
         "Blocked": "Scope",
         "InvestorUniqueness": "(Scope, ScopeId, CddId)",
         "NoData": "",
-        "InvestorUniquenessV2": "CddId",
-        "Custom": "(CustomClaimTypeId, Option<Scope>)"
+        "InvestorUniquenessV2": "(CddId)"
       }
     },
     "ClaimType": {
@@ -499,8 +497,7 @@
         "Blocked": "",
         "InvestorUniqueness": "",
         "NoData": "",
-        "InvestorUniquenessV2": "",
-        "Custom": "CustomClaimTypeId"
+        "InvestorUniquenessV2": ""
       }
     },
     "IdentityClaim": {
@@ -668,6 +665,7 @@
     "Pip": {
       "id": "PipId",
       "proposal": "Call",
+      "state": "ProposalState",
       "proposer": "Proposer"
     },
     "ProposalData": {
@@ -1060,6 +1058,10 @@
     "VenueType": {
       "_enum": ["Other", "Distribution", "Sto", "Exchange"]
     },
+    "ExtensionAttributes": {
+      "usage_fee": "Balance",
+      "version": "MetaVersion"
+    },
     "Tax": "Permill",
     "TargetIdentities": {
       "identities": "Vec<IdentityId>",
@@ -1174,11 +1176,6 @@
         "PolymeshV1CAA": "",
         "PolymeshV1PIA": ""
       }
-    },
-    "Member": {
-      "id": "IdentityId",
-      "expiry_at": "Option<Moment>",
-      "inactive_from": "Option<Moment>"
     },
     "ItnRewardStatus": {
       "_enum": {
@@ -1507,36 +1504,6 @@
         ],
         "type": "GranularCanTransferResult"
       }
-    },
-    "group": {
-      "getCDDValidMembers": {
-        "description": "Get the CDD members",
-        "params": [
-          {
-            "name": "blockHash",
-            "type": "Hash",
-            "isOptional": true
-          }
-        ],
-        "type": "Vec<Member>"
-      },
-      "getGCValidMembers": {
-        "description": "Get the GC members",
-        "params": [
-          {
-            "name": "blockHash",
-            "type": "Hash",
-            "isOptional": true
-          }
-        ],
-        "type": "Vec<Member>"
-      }
-    }
-  },
-  "signedExtensions": {
-    "StoreCallMetadata": {
-      "extrinsic": {},
-      "payload": {}
     }
   }
 }
