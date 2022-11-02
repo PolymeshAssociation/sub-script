@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 
 use dashmap::DashMap;
 
-use rust_decimal::{prelude::ToPrimitive, Decimal};
+use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
 
 use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
@@ -814,9 +814,15 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
         u128::decode(&mut input)?
       };
       log::debug!("Balance = {}", val);
-      let mut val = Decimal::from(val);
-      val /= Decimal::from(balance_scale);
-      Ok(Dynamic::from_decimal(val))
+      Ok(match Decimal::from_u128(val) {
+        Some(val) => {
+          Dynamic::from_decimal(val / Decimal::from(balance_scale))
+        }
+        None => {
+          // TODO: create `Balance` type wrapper.
+          Dynamic::from(val)
+        }
+      })
     })?;
     Ok(())
   });
