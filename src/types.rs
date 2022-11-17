@@ -1493,7 +1493,7 @@ impl InitRegistryFn {
   }
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 struct SpecVersionKey(String, u32);
 
 impl From<&RuntimeVersion> for SpecVersionKey {

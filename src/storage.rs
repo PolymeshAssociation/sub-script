@@ -2,7 +2,7 @@ use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use sp_core::storage::StorageKey;
 
-use crate::BlockHash;
+use crate::block::{hash_from_dynamic, BlockHash};
 use crate::client::Client;
 use crate::metadata::*;
 
@@ -212,11 +212,11 @@ impl Storage {
     &mut self,
     mod_name: &str,
     storage_name: &str,
-    at_block: BlockHash,
+    at_block: Dynamic,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let key = md.get_value_key()?;
-    self.get_by_key(md, key, Some(at_block))
+    self.get_by_key(md, key, hash_from_dynamic(at_block))
   }
 
   pub fn get_value_at_blocks(
@@ -236,11 +236,11 @@ impl Storage {
     mod_name: &str,
     storage_name: &str,
     key: Dynamic,
-    at_block: BlockHash,
+    at_block: Dynamic,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let key = md.get_map_key(key)?;
-    self.get_by_key(md, key, Some(at_block))
+    self.get_by_key(md, key, hash_from_dynamic(at_block))
   }
 
   pub fn get_value(
@@ -279,14 +279,14 @@ impl Storage {
     mod_name: &str,
     storage_name: &str,
     keys: Vec<Dynamic>,
-    at_block: BlockHash,
+    at_block: Dynamic,
   ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let keys = keys
       .into_iter()
       .map(|k| md.get_map_key(k))
       .collect::<Result<Vec<_>, Box<EvalAltResult>>>()?;
-    self.get_by_keys(md, &keys, Some(at_block))
+    self.get_by_keys(md, &keys, hash_from_dynamic(at_block))
   }
 
   pub fn get_map_keys(
@@ -330,6 +330,9 @@ impl Storage {
 pub fn init_engine(engine: &mut Engine, client: &Client, metadata: &Metadata) -> Storage {
   engine
     .register_type_with_name::<Storage>("Storage")
+    .register_fn("new_storage", |client: &mut Client, metadata: Metadata| {
+      Storage::new(client.clone(), &metadata)
+    })
     .register_result_fn("value", Storage::get_value)
     .register_result_fn("value_at_block", Storage::get_value_at_block)
     .register_result_fn("value_at_blocks", Storage::get_value_at_blocks)
