@@ -932,12 +932,10 @@ impl KeyHasher {
     match self.type_hashers.len() {
       0 => Err(format!("This storage isn't a map type."))?,
       1 => {
-        let (ty, _) = &self.type_hashers[0];
-        Ok(ty.decode(key.to_vec())?)
+        Ok(self.decode_hash_key(0, key)?)
       }
       2 => {
-        let (ty, _) = &self.type_hashers[1];
-        Ok(ty.decode(key.to_vec())?)
+        Ok(self.decode_hash_key(1, key)?)
       }
       _ => Err(format!("This storage isn't a double map type."))?,
     }
@@ -1004,6 +1002,29 @@ impl KeyHasher {
       }
     }
     Ok(())
+  }
+
+  fn decode_hash_key(
+    &self,
+    idx: usize,
+    key: &[u8],
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let (ty, hasher) = &self.type_hashers[idx];
+    let key = match hasher {
+      KeyHasherType::Blake2_128Concat => {
+        &key[16..]
+      }
+      KeyHasherType::Twox64Concat => {
+        &key[8..]
+      }
+      KeyHasherType::Identity => {
+        &key[..]
+      }
+      _ => {
+        return Err(format!("The key hasher {:?} isn't reversible.", hasher).into());
+      }
+    };
+    Ok(ty.decode(key.to_vec())?)
   }
 
   pub fn get_map_key(
