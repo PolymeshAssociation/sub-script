@@ -401,6 +401,35 @@ fn get_user_venues(user) {
 	return STORAGE.map("Settlement", "UserVenues", did);
 }
 
+// Get signer's receipts used.
+fn get_signer_receipts_used(user) {
+	let paged = STORAGE.double_paged("Settlement", "ReceiptsUsed", user);
+	paged.set_page_count(500);
+	let receipts_used = [];
+	do {
+		let keys = paged.next_keys();
+		if keys == () {
+			break;
+		}
+		for key in keys {
+			receipts_used += key;
+		}
+	} while paged.has_more;
+	return receipts_used;
+}
+
+// Get signer's next receipt uid.
+fn get_signers_next_receipt_uid(user) {
+	let receipts = get_signer_receipts_used(user);
+	let uid_max = 0;
+	for uid in receipts {
+		if uid > uid_max {
+			uid_max = uid;
+		}
+	}
+	return uid_max + 1;
+}
+
 fn create_venue(user, venue_type) {
 	// Create venue.
 	return user.submit(Settlement.create_venue("", [], venue_type));
