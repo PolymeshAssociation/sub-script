@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use sp_core::{sr25519, Pair};
-use sp_runtime::{AccountId32, MultiSignature};
+use sp_runtime::{AccountId32, MultiSignature, traits::Verify};
 
 use dashmap::DashMap;
 
@@ -52,6 +52,10 @@ impl User {
     MultiSignature::Sr25519(self.pair.sign(&data[..]))
   }
 
+  pub fn verify_sig(&self, data: Vec<u8>, sig: &MultiSignature) -> bool {
+    sig.verify(&data[..], &self.acc())
+  }
+
   pub fn submit_call(
     &mut self,
     call: EncodedCall,
@@ -91,6 +95,10 @@ impl SharedUser {
 
   pub fn sign_data(&mut self, data: Vec<u8>) -> MultiSignature {
     self.0.read().unwrap().sign_data(data)
+  }
+
+  pub fn verify_sig(&mut self, data: Vec<u8>, sig: MultiSignature) -> bool {
+    self.0.read().unwrap().verify_sig(data, &sig)
   }
 
   pub fn submit_call(
@@ -173,6 +181,7 @@ pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
     .register_get("nonce", SharedUser::nonce)
     .register_fn("to_string", SharedUser::to_string)
     .register_fn("sign", SharedUser::sign_data)
+    .register_fn("verify", SharedUser::verify_sig)
     .register_result_fn("submit", SharedUser::submit_call)
     .register_type_with_name::<AccountId>("AccountId")
     .register_fn("to_string", |acc: &mut AccountId| acc.to_string())
