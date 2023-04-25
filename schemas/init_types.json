@@ -15,13 +15,13 @@
   "Releases": {
     "_enum": ["V1", "V2"]
   },
-	"CallOrHashOf<T>": "MaybeHashed<Call, Hash>",
-	"MaybeHashed<Call, Hash>": {
+  "CallOrHashOf<T>": "MaybeHashed<Call, Hash>",
+  "MaybeHashed<Call, Hash>": {
     "_enum": {
       "Value": "Call",
       "Hash": "Hash"
     }
-	},
+  },
   "AccountId": "[u8; 32]",
   "AccountId32": "AccountId",
   "AccountIndex": "u32",
@@ -35,7 +35,7 @@
   "Hash": "H256",
   "CodeHash<T>": "Hash",
   "Sha256Hash": "H256",
-	"IndicesLookupSource": "MultiAddress",
+  "IndicesLookupSource": "MultiAddress",
   "MultiAddress": {
     "_enum": {
       "Id": "AccountId",
@@ -221,6 +221,12 @@
   },
   "ExtendedBalance": "u128",
   "ElectionScore": "[ExtendedBalance; 3]",
+  "SessionKeys": {
+    "grandpa": "[u8; 32]",
+    "babe": "[u8; 32]",
+    "imOnline": "[u8; 32]",
+    "authority_discovery": "[u8; 32]"
+  },
   "Keys": "SessionKeys",
   "Proposal": "Call",
   "ProposalIndex": "u32",
@@ -285,6 +291,9 @@
   "<AuthorityId as RuntimeAppPublic>::Signature": "[u8; 64]",
   "AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
   "Call": "RuntimeCall",
+  "<T as Trait>::RuntimeCall": "Call",
+  "<T as Config>::RuntimeCall": "Call",
+  "<T as frame_system::Config>::RuntimeCall": "Call",
   "<T as Trait>::Call": "Call",
   "<T as Config>::Call": "Call",
   "<T as frame_system::Config>::Call": "Call"

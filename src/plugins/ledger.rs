@@ -13,7 +13,7 @@ use sp_runtime::generic;
 use ledger_apdu::APDUErrorCode;
 use ledger_transport_hid::{hidapi, TransportNativeHID};
 
-use sp_core::Encode;
+use sp_core::{Decode, Encode};
 
 use crate::client::{Client, Extra, ExtrinsicCallResult, ExtrinsicV4, SignedPayload};
 use crate::metadata::EncodedCall;
@@ -167,7 +167,7 @@ impl SubstrateApp {
       client,
       cla: APP_POLYMESH,
       slip0044: SLIP0044_POLYMESH,
-      account_id: Default::default(),
+      account_id: AccountId::decode(&mut vec![0u8; 32].as_slice()).expect("Zero account id"),
       address: AddressBip44::new(SLIP0044_POLYMESH, 0, 0, 0),
       scheme: SCHEME_ED25519,
       nonce: 0,

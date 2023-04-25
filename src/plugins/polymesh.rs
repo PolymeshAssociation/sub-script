@@ -1,6 +1,5 @@
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
@@ -18,19 +17,19 @@ use crate::types::TypesRegistry;
 use crate::users::SharedUser;
 
 pub fn str_to_ticker(val: &str) -> Result<Ticker, Box<EvalAltResult>> {
-  let res = if val.starts_with("0x") {
+  let ticker = if val.starts_with("0x") {
     let b = hex::decode(&val.as_bytes()[2..]).map_err(|e| e.to_string())?;
-    Ticker::try_from(b.as_slice())
+    Ticker::from_slice_truncated(b.as_slice())
   } else if val.len() == 12 {
-    Ticker::try_from(val.as_bytes())
+    Ticker::from_slice_truncated(val.as_bytes())
   } else {
     let mut ticker = [0u8; 12];
     for (idx, b) in val.as_bytes().iter().take(12).enumerate() {
       ticker[idx] = *b;
     }
-    Ticker::try_from(&ticker[..])
+    Ticker::from_slice_truncated(&ticker[..])
   };
-  Ok(res.map_err(|e| e.to_string())?)
+  Ok(ticker)
 }
 
 #[derive(Clone)]

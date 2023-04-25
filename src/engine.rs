@@ -364,6 +364,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   globals.insert("CLIENT".into(), Dynamic::from(client));
   globals.insert("RPC_MANAGER".into(), Dynamic::from(rpc_manager));
   globals.insert("RPC".into(), Dynamic::from(rpc));
+  globals.insert("RPC_URL".into(), Dynamic::from(opts.url.to_string()));
   globals.insert("Types".into(), Dynamic::from(lookup));
   globals.insert("TypesRegistry".into(), Dynamic::from(types_registry));
   globals.insert("STORAGE".into(), Dynamic::from(storage));

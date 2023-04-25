@@ -1166,13 +1166,12 @@ impl Types {
         let mut old_meta = old_ref.0.write().unwrap();
         // Already exists.  Check that it is a `TypeMeta::Unresolved`.
         match &*old_meta {
-          TypeMeta::Unresolved(_) => {
-            *old_meta = TypeMeta::NewType(name.into(), type_ref.clone());
-          }
+          TypeMeta::Unresolved(_) => (),
           _ => {
-            eprintln!("REDEFINE TYPE: {}", name);
+            log::warn!("REDEFINE TYPE: {}", name);
           }
         }
+        *old_meta = TypeMeta::NewType(name.into(), type_ref.clone());
         old_ref.clone()
       }
       Entry::Vacant(entry) => {

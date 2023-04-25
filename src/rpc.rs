@@ -618,6 +618,12 @@ impl RpcManager {
     Ok(connection)
   }
 
+  pub fn new_connection(&self, url: &str) -> Result<RpcHandler, Box<EvalAltResult>> {
+    let id = self.0.get_next_id();
+    let conn = RpcConnection::new(id, url)?;
+    Ok(RpcHandler::new(conn))
+  }
+
   pub fn get_client(&self, url: &str) -> Result<RpcHandler, Box<EvalAltResult>> {
     let conn = self.get_connection(url)?;
     Ok(RpcHandler::new(conn))
@@ -721,6 +727,9 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
     .register_type_with_name::<RpcManager>("RpcManager")
     .register_result_fn("get_client", |rpc: &mut RpcManager, url: &str| {
       rpc.get_client(url)
+    })
+    .register_result_fn("new_connection", |rpc: &mut RpcManager, url: &str| {
+      rpc.new_connection(url)
     });
 
   let rpc = RpcManager::new();
