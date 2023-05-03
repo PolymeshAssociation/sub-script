@@ -17,15 +17,16 @@ fn setup_user(name, polyx, ticker) {
 	user;
 }
 
-fn create_mercat_account(user, tickers) {
+fn create_mercat_account(user, asset_id) {
 	let mercat = #{};
-	mercat.acc_tx = MercatUtils.create_account(user.name, user.ticker, tickers);
+	mercat.sec = MercatUtils.create_secret_account(asset_id);
+	mercat.acc_tx = MercatUtils.create_account_tx(mercat.sec);
 	mercat.acc = mercat.acc_tx.account;
-	mercat.id = mercat.acc.account_id;
+	mercat.asset_id = asset_id;
 	mercat.pub_key = mercat.acc.pub_key;
-	print(`${user.name} account = ${mercat.id.base64}`);
-	print(`${user.name} pub_key = ${mercat.pub_key.base64}`);
-	//print(`${user.name} tx = ${mercat.acc_tx.base64}`);
+	print(`${user.name} account = ${mercat.asset_id}`);
+	print(`${user.name} pub_key = ${mercat.pub_key}`);
+	//print(`${user.name} tx = ${mercat.acc_tx}`);
 
 	user.mercat = mercat;
 	user;
@@ -33,8 +34,9 @@ fn create_mercat_account(user, tickers) {
 
 fn create_mercat_mediator(user) {
 	let mediator = #{};
-	mediator.acc = MercatUtils.create_mediator(user.name);
-	print(`${user.name} mediator = ${mediator.acc.base64}`);
+	mediator.sec = MercatUtils.create_mediator();
+	mediator.acc = mediator.sec.pub_key;
+	print(`${user.name} mediator = ${mediator.acc}`);
 
 	user.mediator = mediator;
 	user;
@@ -42,29 +44,30 @@ fn create_mercat_mediator(user) {
 
 fn get_mercat_balance(user) {
 	// Get user's token balance from the chain.
-	let enc_balance_base64 = STORAGE.double_map(
+	let enc_balance = STORAGE.double_map(
 	  "ConfidentialAsset", "MercatAccountBalance",
-		user.did, user.mercat.id.base64,
+		user.did, user.ticker,
 	);
-	let balance = MercatUtils.decrypt_balance(user.name, user.ticker, enc_balance_base64);
+	let balance = MercatUtils.decrypt_account_balance(user.mercat.sec, enc_balance);
 	print(`${user.name}'s balance = ${balance}`);
 	return #{
 		balance: balance,
-		base64: enc_balance_base64,
+		enc: enc_balance,
 	};
 }
 
 // Test users.
-let issuer = setup_user("issuer", 100000.0, "31");
-let investor = setup_user("investor", 100000.0, "31");
-let mediator = setup_user("mediator", 100000.0, "31");
+let ticker = "0x31";
+let issuer = setup_user("issuer", 100000.0, ticker);
+let investor = setup_user("investor", 100000.0, ticker);
+let mediator = setup_user("mediator", 100000.0, ticker);
 
 //
 // Create ConfidentialAssets.
 //
 
 results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
-	`Token 1`, "0x31", #{ EquityCommon: () }
+	`Token 1`, ticker, #{ EquityCommon: () }
 ));
 results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
 	`Token 2`, "0x32", #{ EquityCommon: () }
@@ -74,26 +77,26 @@ results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
 // Setup MERCAT accounts
 //
 
-issuer = create_mercat_account(issuer, ["31", "32"]);
-results += issuer.acc.submit(ConfidentialAsset.validate_mercat_account(issuer.mercat.acc_tx.base64));
+issuer = create_mercat_account(issuer, "31");
+results += issuer.acc.submit(ConfidentialAsset.validate_mercat_account(ticker, issuer.mercat.acc_tx));
 
-investor = create_mercat_account(investor, ["31", "32"]);
-results += investor.acc.submit(ConfidentialAsset.validate_mercat_account(investor.mercat.acc_tx.base64));
+investor = create_mercat_account(investor, "31");
+results += investor.acc.submit(ConfidentialAsset.validate_mercat_account(ticker, investor.mercat.acc_tx));
 
 //
 // Setup Mediator
 //
 
 mediator = create_mercat_mediator(mediator);
-results += mediator.acc.submit(ConfidentialAsset.add_mediator_mercat_account(mediator.mediator.acc.base64));
+results += mediator.acc.submit(ConfidentialAsset.add_mediator_mercat_account(mediator.mediator.acc));
 
 let issuer_balance = 1000;
-let mint_tx = MercatUtils.mint_asset("issuer", "31", issuer_balance);
-//print(`mint_tx = ${mint_tx.base64}`);
+let mint_tx = MercatUtils.mint_asset(issuer.mercat.sec, issuer_balance);
+//print(`mint_tx = ${mint_tx}`);
 results += issuer.acc.submit(ConfidentialAsset.mint_confidential_asset(
 	"0x31",
 	issuer_balance / 1000000.0, // sub-script will scale `Balance` types (i.e. add 6 decimal places).
-	mint_tx.base64,
+	mint_tx,
 ));
 
 //
@@ -106,13 +109,14 @@ let venue_id = 0;
 p::wait_for_in_block(results);
 
 fn run_mercat_settlement(venue_id, issuer, investor, mediator, amount) {
+	let asset_id = issuer.mercat.asset_id;
 	let res = mediator.acc.submit(ConfidentialAsset.add_transaction(
 		venue_id,
 		[#{
 			sender_did: issuer.did,
 			receiver_did: investor.did,
-			sender: issuer.mercat.id.base64,
-			receiver: investor.mercat.id.base64,
+			sender: issuer.ticker,
+			receiver: investor.ticker,
 			mediator: mediator.did,
 		}]
 	));
@@ -130,25 +134,30 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, amount) {
 	get_mercat_balance(investor);
 
 	let init_tx = MercatUtils.create_tx(
-			issuer.name,
-			[investor.mercat.id.base64, investor.mercat.pub_key.base64],
-			mediator.mediator.acc.base64,
-			issuer.ticker, amount,
-			issuer_balance.base64
+			issuer.mercat.sec,
+			investor.mercat.acc,
+			mediator.mediator.acc,
+			amount,
+			issuer_balance.enc
 		);
-	//print(`init_tx = ${init_tx.base64}`);
+	//print(`init_tx = ${init_tx}`);
 	print("Issuer affirms with init_tx");
 	results += issuer.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id, 0,
-	  #{ sender: init_tx.base64, receiver: (), mediator: () }
+	  #{ sender: init_tx, receiver: (), mediator: () }
 	));
 
-	let finalize_tx = MercatUtils.finalize_tx(investor.name, investor.ticker, amount, init_tx.base64);
-	//print(`finalize_tx = ${finalize_tx.base64}`);
+	// Wait for pending tx and show any errors.
+	print("Wait for sender affirm of transaction before sending receiver's affirm.");
+	p::wait_for_in_block(results);
+	results = [];
+
+	let finalize_tx = MercatUtils.finalize_tx(investor.mercat.sec, amount, init_tx);
+	//print(`finalize_tx = ${finalize_tx}`);
 	print("Ferdie affirms with finalize_tx");
 	results += investor.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id, 0,
-	  #{ sender: (), receiver: finalize_tx.base64, mediator: () }
+	  #{ sender: (), receiver: finalize_tx, mediator: () }
 	));
 
 	// Wait for pending tx and show any errors.
@@ -157,17 +166,17 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, amount) {
 	results = [];
 
 	let justify_tx = MercatUtils.justify_tx(
-			[issuer.mercat.id.base64, issuer.mercat.pub_key.base64],
-			issuer_balance.base64,
-			[investor.mercat.id.base64, investor.mercat.pub_key.base64],
-			mediator.name,
-			mediator.ticker,
-			finalize_tx.base64);
-	//print(`justify_tx = ${justify_tx.base64}`);
+			mediator.mediator.sec,
+			issuer.mercat.acc,
+			issuer_balance.enc,
+			investor.mercat.acc,
+			init_tx,
+			finalize_tx);
+	//print(`justify_tx = ${justify_tx}`);
 	print("Mediator affirms with justify_tx");
 	results += mediator.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id, 0,
-	  #{ sender: (), receiver: (), mediator: justify_tx.base64 }
+	  #{ sender: (), receiver: (), mediator: justify_tx }
 	));
 
 	print("Mediator executes the transaction");

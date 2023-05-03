@@ -122,6 +122,12 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       data.encode(&ticker);
       Ok(())
     })?;
+    types.custom_encode("polymesh_primitives::ticker::Ticker", TypeId::of::<ImmutableString>(), |value, data| {
+      let value = value.cast::<ImmutableString>();
+      let ticker = str_to_ticker(value.as_str())?;
+      data.encode(&ticker);
+      Ok(())
+    })?;
     types.custom_encode("Claim", TypeId::of::<Claim>(), |value, data| {
       data.encode(value.cast::<Claim>());
       Ok(())
