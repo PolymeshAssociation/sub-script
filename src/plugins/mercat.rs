@@ -1,4 +1,4 @@
-use confidential_identity_core::asset_proofs::{AssetId, ElgamalSecretKey};
+use confidential_identity_core::asset_proofs::ElgamalSecretKey;
 use curve25519_dalek::scalar::Scalar;
 use parity_scale_codec::{Decode, Encode};
 
@@ -23,8 +23,6 @@ use std::any::TypeId;
 use std::collections::HashMap;
 
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString, INT};
-
-use super::polymesh::str_to_ticker;
 
 use crate::client::Client;
 use crate::rpc::RpcHandler;
@@ -81,12 +79,9 @@ impl MercatUtils {
       .create(&account.secret, &mut rng)
       .map_err(|error| Error::LibraryError { error })?;
 
-    let asset_id = account_tx.pub_account.asset_id;
-
     info!(
-      "CLI log: tx-{}:\n\nAsset ID as hex:\n0x{}\n\nAccount Transaction as hex:\n0x{}\n",
+      "CLI log: tx-{}:\n\nAccount Transaction as hex:\n0x{}\n",
       TX_ID,
-      hex::encode(asset_id.encode()),
       hex::encode(account_tx.encode())
     );
 
@@ -129,34 +124,24 @@ impl MercatUtils {
 
   pub fn create_secret_account(
     &mut self,
-    ticker: String,
   ) -> Result<Account, Box<EvalAltResult>> {
     Ok(
       self
-        .mercat_create_secret_account(ticker)
+        .mercat_create_secret_account()
         .map_err(|e| e.to_string())?,
     )
   }
 
   fn mercat_create_secret_account(
     &mut self,
-    ticker: String,
   ) -> Result<Account, Error> {
     let enc_keys = self.mercat_create_keys()?;
 
-    let mut asset_id = [0u8; 12];
-    let decoded = hex::decode(&ticker).unwrap();
-    asset_id[..decoded.len()].copy_from_slice(&decoded);
-
-    let asset_id = AssetId { id: asset_id };
-
     let account = Account {
       public: PubAccount {
-        asset_id,
         owner_enc_pub_key: enc_keys.public,
       },
       secret: SecAccount {
-        asset_id,
         enc_keys,
       },
     };
@@ -398,7 +383,7 @@ pub fn init_vec_encoded<T: Decode + Encode + Clone + Send + Sync + 'static>(name
   types.custom_encode(
     name,
     TypeId::of::<T>(),
-    |value, data| {
+    move |value, data| {
       let val = value.cast::<T>();
       let encoded = val.encode();
       data.encode(encoded);
@@ -422,17 +407,8 @@ pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
-    types.custom_encode("AssetId", TypeId::of::<ImmutableString>(), |value, data| {
-      let value = value.cast::<ImmutableString>();
-      let asset_id = str_to_ticker(value.as_str())?;
-      data.encode(&asset_id);
-      Ok(())
-    })?;
-
-    init_base64("pallet_confidential_asset::Base64Vec", types)?;
-    init_base64("polymesh_primitives::asset::Base64Vec", types)?;
-
     init_vec_encoded::<PubAccountTx>("pallet_confidential_asset::PubAccountTxWrapper", types)?;
+    init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::MercatAccount", types)?;
     init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::EncryptionPubKeyWrapper", types)?;
     init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::EncryptedBalanceWrapper", types)?;
     init_vec_encoded::<InitializedAssetTx>("pallet_confidential_asset::InitializedAssetTxWrapper", types)?;
@@ -473,11 +449,9 @@ pub fn init_engine(
     .register_get("base64", |v: &mut PubAccountTx| base64::encode(v.encode()))
     .register_fn("to_string", hex_to_string::<PubAccountTx>)
     .register_type_with_name::<Account>("Account")
-    .register_get("asset_id", |v: &mut Account| v.public.asset_id)
     .register_type_with_name::<MediatorAccount>("MediatorAccount")
     .register_get("pub_key", |v: &mut MediatorAccount| v.encryption_key.public)
     .register_type_with_name::<PubAccount>("PubAccount")
-    .register_get("asset_id", |v: &mut PubAccount| v.asset_id)
     .register_get("pub_key", |v: &mut PubAccount| v.owner_enc_pub_key)
     .register_get("base64", |v: &mut PubAccount| base64::encode(v.encode()))
     .register_fn("to_string", hex_to_string::<PubAccount>)
@@ -486,7 +460,7 @@ pub fn init_engine(
       base64::encode(v.encode())
     })
     .register_fn("to_string", hex_to_string::<EncryptedAmount>)
-    .register_type_with_name::<PubAccount>("EncryptionPubKey")
+    .register_type_with_name::<EncryptionPubKey>("EncryptionPubKey")
     .register_result_fn("encrypt_amount", |k: &mut EncryptionPubKey, amount: INT| {
       let mut rng = rand::thread_rng();
       let (_, enc_amount) = k.encrypt_value((amount as u32).into(), &mut rng);
@@ -495,7 +469,7 @@ pub fn init_engine(
     .register_get("base64", |k: &mut EncryptionPubKey| {
       base64::encode(k.encode())
     })
-    .register_fn("to_string", hex_to_string::<EncryptionPubKey>)
+    //.register_fn("to_string", hex_to_string::<EncryptionPubKey>)
     .register_type_with_name::<InitializedAssetTx>("InitializedAssetTx")
     .register_get("base64", |tx: &mut InitializedAssetTx| {
       base64::encode(tx.encode())
@@ -515,12 +489,7 @@ pub fn init_engine(
     .register_get("base64", |tx: &mut JustifiedTransferTx| {
       base64::encode(tx.encode())
     })
-    .register_fn("to_string", hex_to_string::<JustifiedTransferTx>)
-    .register_type_with_name::<AssetId>("AssetId")
-    .register_fn("to_string", |asset_id: &mut AssetId| {
-      let s = String::from_utf8_lossy(asset_id.id.as_slice());
-      format!("{s}")
-    });
+    .register_fn("to_string", hex_to_string::<JustifiedTransferTx>);
 
   Ok(())
 }
