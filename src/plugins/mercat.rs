@@ -1,4 +1,3 @@
-use confidential_identity_core::asset_proofs::ElgamalSecretKey;
 use curve25519_dalek::scalar::Scalar;
 use parity_scale_codec::{Decode, Encode};
 
@@ -6,8 +5,9 @@ use log::info;
 use mercat::{
   account::AccountCreator,
   asset::AssetIssuer,
+  confidential_identity_core::asset_proofs::{Balance, ElgamalSecretKey},
   transaction::{CtxMediator, CtxReceiver, CtxSender},
-  Account, AccountCreatorInitializer, AssetTransactionIssuer, EncryptedAmount, EncryptionKeys,
+  Account, AccountCreatorInitializer, AmountSource, AssetTransactionIssuer, EncryptedAmount, EncryptionKeys,
   EncryptionPubKey, FinalizedTransferTx, InitializedAssetTx, InitializedTransferTx,
   JustifiedTransferTx, PubAccount, PubAccountTx, SecAccount, MediatorAccount,
   TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
@@ -27,8 +27,6 @@ use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString, INT};
 use crate::client::Client;
 use crate::rpc::RpcHandler;
 use crate::types::{Types, TypesRegistry};
-
-pub const TX_ID: u32 = 1;
 
 pub enum Op {
   Add,
@@ -80,8 +78,7 @@ impl MercatUtils {
       .map_err(|error| Error::LibraryError { error })?;
 
     info!(
-      "CLI log: tx-{}:\n\nAccount Transaction as hex:\n0x{}\n",
-      TX_ID,
+      "Account Transaction as hex:\n0x{}\n",
       hex::encode(account_tx.encode())
     );
 
@@ -149,7 +146,7 @@ impl MercatUtils {
     Ok(account)
   }
 
-  pub fn decrypt_account_balance(
+  pub fn decrypt_balance(
     &mut self,
     account: Account,
     encrypted_value: EncryptedAmount,
@@ -157,6 +154,18 @@ impl MercatUtils {
     let value = account.secret.enc_keys.secret.decrypt(&encrypted_value)
         .map_err(|e| e.to_string())? as i64;
     Ok(value)
+  }
+
+  pub fn decrypt_balance_with_hint(
+    &mut self,
+    account: Account,
+    encrypted_value: EncryptedAmount,
+    low: INT,
+    high: INT,
+  ) -> Option<i64> {
+    account.secret.enc_keys.secret
+        .decrypt_with_hint(&encrypted_value, low as Balance, high as Balance)
+        .map(|v| v as i64)
   }
 
   pub fn mint_asset(
@@ -168,7 +177,7 @@ impl MercatUtils {
       self
         .mercat_mint_asset(
           issuer,
-          amount as u32,
+          amount as Balance,
         )
         .map_err(|e| e.to_string())?,
     )
@@ -177,7 +186,7 @@ impl MercatUtils {
   fn mercat_mint_asset(
     &mut self,
     issuer: Account,
-    amount: u32,
+    amount: Balance,
   ) -> Result<InitializedAssetTx, Error> {
     let seed = self.seed();
     let mut rng = create_rng_from_seed(seed)?;
@@ -200,7 +209,8 @@ impl MercatUtils {
     receiver: PubAccount,
     mediator: EncryptionPubKey,
     amount: i64,
-    pending_balance: EncryptedAmount,
+    pending_enc_balance: EncryptedAmount,
+    pending_balance: i64,
   ) -> Result<InitializedTransferTx, Box<EvalAltResult>> {
     Ok(
       self
@@ -208,8 +218,9 @@ impl MercatUtils {
           sender,
           receiver,
           mediator,
-          amount as u32,
-          pending_balance,
+          amount as Balance,
+          pending_enc_balance,
+          pending_balance as Balance,
         )
         .map_err(|e| e.to_string())?,
     )
@@ -220,8 +231,9 @@ impl MercatUtils {
     sender_account: Account,
     receiver: PubAccount,
     mediator: EncryptionPubKey,
-    amount: u32,
-    pending_balance: EncryptedAmount,
+    amount: Balance,
+    pending_enc_balance: EncryptedAmount,
+    pending_balance: Balance,
   ) -> Result<InitializedTransferTx, Error> {
     let seed = self.seed();
     let mut rng = create_rng_from_seed(seed)?;
@@ -231,9 +243,10 @@ impl MercatUtils {
     let init_tx = ctx_sender
       .create_transaction(
         &sender_account,
-        &pending_balance,
+        &pending_enc_balance,
+        pending_balance,
         &receiver,
-        &mediator,
+        Some(&mediator),
         &[],
         amount,
         &mut rng,
@@ -256,7 +269,7 @@ impl MercatUtils {
   ) -> Result<FinalizedTransferTx, Box<EvalAltResult>> {
     Ok(
       self
-        .mercat_finalize_tx(receiver, amount as u32, init_tx)
+        .mercat_finalize_tx(receiver, amount as Balance, init_tx)
         .map_err(|e| e.to_string())?,
     )
   }
@@ -264,7 +277,7 @@ impl MercatUtils {
   fn mercat_finalize_tx(
     &mut self,
     receiver_account: Account,
-    amount: u32,
+    amount: Balance,
     init_tx: InitializedTransferTx,
   ) -> Result<FinalizedTransferTx, Error> {
 
@@ -324,7 +337,7 @@ impl MercatUtils {
       .justify_transaction(
         &init_tx,
         &finalized_tx,
-        &mediator.encryption_key,
+        AmountSource::Encrypted(&mediator.encryption_key),
         &sender,
         &sender_balance,
         &receiver,
@@ -410,7 +423,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     init_vec_encoded::<PubAccountTx>("pallet_confidential_asset::PubAccountTxWrapper", types)?;
     init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::MercatAccount", types)?;
     init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::EncryptionPubKeyWrapper", types)?;
-    init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::EncryptedBalanceWrapper", types)?;
+    init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::EncryptedAmountWrapper", types)?;
     init_vec_encoded::<InitializedAssetTx>("pallet_confidential_asset::InitializedAssetTxWrapper", types)?;
     init_vec_encoded::<InitializedTransferTx>("pallet_confidential_asset::InitializedTransferTxWrapper", types)?;
     init_vec_encoded::<FinalizedTransferTx>("pallet_confidential_asset::FinalizedTransferTxWrapper", types)?;
@@ -438,7 +451,8 @@ pub fn init_engine(
     .register_result_fn("create_account_tx", MercatUtils::create_account_tx)
     .register_result_fn("create_secret_account", MercatUtils::create_secret_account)
     .register_result_fn("mint_asset", MercatUtils::mint_asset)
-    .register_result_fn("decrypt_account_balance", MercatUtils::decrypt_account_balance)
+    .register_result_fn("decrypt_balance", MercatUtils::decrypt_balance)
+    .register_fn("decrypt_balance_with_hint", MercatUtils::decrypt_balance_with_hint)
     .register_result_fn("create_tx", MercatUtils::create_tx)
     .register_result_fn("finalize_tx", MercatUtils::finalize_tx)
     .register_result_fn("justify_tx", MercatUtils::justify_tx)
@@ -463,13 +477,13 @@ pub fn init_engine(
     .register_type_with_name::<EncryptionPubKey>("EncryptionPubKey")
     .register_result_fn("encrypt_amount", |k: &mut EncryptionPubKey, amount: INT| {
       let mut rng = rand::thread_rng();
-      let (_, enc_amount) = k.encrypt_value((amount as u32).into(), &mut rng);
+      let (_, enc_amount) = k.encrypt_value((amount as Balance).into(), &mut rng);
       Ok(enc_amount as EncryptedAmount)
     })
     .register_get("base64", |k: &mut EncryptionPubKey| {
       base64::encode(k.encode())
     })
-    //.register_fn("to_string", hex_to_string::<EncryptionPubKey>)
+    .register_fn("to_string", hex_to_string::<EncryptionPubKey>)
     .register_type_with_name::<InitializedAssetTx>("InitializedAssetTx")
     .register_get("base64", |tx: &mut InitializedAssetTx| {
       base64::encode(tx.encode())

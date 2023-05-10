@@ -2,6 +2,13 @@ print("Test MERCAT");
 
 import "scripts/mod/polymesh" as p;
 
+// Get arguments.
+let prefix = ARG.shift();
+if prefix == () {
+	print("Need ticker prefix");
+	return;
+}
+
 let results = [];
 
 fn setup_user(name, polyx, ticker) {
@@ -46,7 +53,7 @@ fn get_mercat_balance(user) {
 	  "ConfidentialAsset", "MercatAccountBalance",
 		user.mercat.pub_key, user.ticker,
 	);
-	let balance = MercatUtils.decrypt_account_balance(user.mercat.sec, enc_balance);
+	let balance = MercatUtils.decrypt_balance(user.mercat.sec, enc_balance);
 	print(`${user.name}'s balance = ${balance}`);
 	return #{
 		balance: balance,
@@ -55,10 +62,10 @@ fn get_mercat_balance(user) {
 }
 
 // Test users.
-let ticker = "Ticker01";
-let issuer = setup_user("issuer", 100000.0, ticker);
-let investor = setup_user("investor", 100000.0, ticker);
-let mediator = setup_user("mediator", 100000.0, ticker);
+let ticker = `${prefix}T`;
+let issuer = setup_user(`${prefix}_issuer`, 100000.0, ticker);
+let investor = setup_user(`${prefix}_investor`, 100000.0, ticker);
+let mediator = setup_user(`${prefix}_mediator`, 100000.0, ticker);
 
 //
 // Create ConfidentialAssets.
@@ -66,9 +73,6 @@ let mediator = setup_user("mediator", 100000.0, ticker);
 
 results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
 	`Token 1`, ticker, #{ EquityCommon: () }
-));
-results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
-	`Token 2`, "Ticker02", #{ EquityCommon: () }
 ));
 
 //
@@ -88,7 +92,7 @@ results += investor.acc.submit(ConfidentialAsset.validate_mercat_account(ticker,
 mediator = create_mercat_mediator(mediator);
 results += mediator.acc.submit(ConfidentialAsset.add_mediator_mercat_account(mediator.mediator.acc));
 
-let issuer_balance = 1000;
+let issuer_balance = 1_000_000;
 let mint_tx = MercatUtils.mint_asset(issuer.mercat.sec, issuer_balance);
 //print(`mint_tx = ${mint_tx}`);
 results += issuer.acc.submit(ConfidentialAsset.mint_confidential_asset(
@@ -111,8 +115,6 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 		venue_id,
 		[#{
 			ticker: ticker,
-			sender_did: issuer.did,
-			receiver_did: investor.did,
 			sender: issuer.mercat.pub_key,
 			receiver: investor.mercat.pub_key,
 			mediator: mediator.did,
@@ -136,7 +138,8 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 			investor.mercat.acc,
 			mediator.mediator.acc,
 			amount,
-			issuer_balance.enc
+			issuer_balance.enc,
+			issuer_balance.balance,
 		);
 	//print(`init_tx = ${init_tx}`);
 	print("Issuer affirms with init_tx");
@@ -187,12 +190,12 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	p::wait_for_in_block(results);
 }
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 100);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 10_000);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 150);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 15_000);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 350);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 35_000);
 
 // Get Issuer's balance from the chain.
-let issuer_balance = get_mercat_balance(issuer);
+get_mercat_balance(issuer);
 get_mercat_balance(investor);

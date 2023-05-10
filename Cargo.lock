@@ -268,11 +268,9 @@ dependencies = [
 [[package]]
 name = "bulletproofs"
 version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40e698f1df446cc6246afd823afbe2d121134d089c9102c1dd26d1264991ba32"
+source = "git+https://github.com/PolymeshAssociation/bulletproofs?branch=polymesh#b8670ba8905d4e5d5c204677c4b391eea5d4b158"
 dependencies = [
  "byteorder",
- "clear_on_drop",
  "curve25519-dalek-ng",
  "digest 0.9.0",
  "merlin 3.0.0",
@@ -386,15 +384,6 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
-]
-
-[[package]]
-name = "clear_on_drop"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38508a63f4979f0048febc9966fadbd48e5dab31fd0ec6a3f151bbf4a74f7423"
-dependencies = [
- "cc",
 ]
 
 [[package]]

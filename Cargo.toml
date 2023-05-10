@@ -23,6 +23,7 @@ sp-runtime-interface = { git = "https://github.com/PolymeshAssociation/substrate
 
 polymesh-primitives = { git = "https://github.com/PolymeshAssociation/Polymesh", branch = "develop" }
 
+bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "polymesh" }
 mercat = { path = "../cryptography/mercat" }
 mercat-common = { path = "../cryptography/mercat/cli/common/" }
 confidential_identity_core = { path = "../cryptography/confidential-identity-core" }
@@ -115,6 +116,7 @@ polymesh = [
 	"confidential_identity_core",
 	"mercat",
 	"mercat/std",
+	"mercat/balance_64",
 	"mercat-common",
 	"curve25519-dalek",
 	"base64",
