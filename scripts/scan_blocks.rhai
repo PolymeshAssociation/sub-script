@@ -12,7 +12,7 @@ count = if count == () { 10 } else { parse_int(count) };
 // Batch size.
 let batch_size = ARG.shift();
 batch_size = if batch_size == () { 10 } else { parse_int(batch_size) };
-let repeat = 400;
+let repeat = 0;//400;
 
 let end_block = start_block + count;
 
@@ -90,17 +90,17 @@ while block_number <= end_block {
 		let calls = block.extrinsics;
 		let c_count = calls.len();
 		if c_count != 1 || e_count != 1 {
-			/*
+			//*
 			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
 			print(`- calls:`);
 			for xt in block.extrinsics {
 				print(`  -- ${xt.decoded_call}`);
 			}
 			print(`events = ${events}`);
-			*/
+			//*/
 		} else {
 			counter += 1;
-			if counter > 1000 {
+			if counter > 10 {
 				counter = 0;
 				print(`number = ${block.block_number}`);
 			}
