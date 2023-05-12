@@ -1584,6 +1584,10 @@ impl InnerTypesRegistry {
     version: Option<RuntimeVersion>,
     hash: Option<BlockHash>,
   ) -> Result<TypeLookup, Box<EvalAltResult>> {
+    let version = match (version, hash) {
+      (Some(version), _) => Some(version),
+      (None, hash) => Some(Self::rpc_get_runtime_version(&rpc, hash)?),
+    };
     let spec_key: Option<SpecVersionKey> = version.as_ref().map(|v| v.into());
     use dashmap::mapref::entry::Entry;
     Ok(match self.block_types.entry(spec_key) {
