@@ -22,11 +22,26 @@ pub use mercat_common::{
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString, INT};
+use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
+use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use crate::client::Client;
 use crate::rpc::RpcHandler;
 use crate::types::{Types, TypesRegistry};
+
+pub fn to_balance(val: Dynamic) -> Result<Balance, Box<EvalAltResult>> {
+  let type_id = val.type_id();
+  if type_id == TypeId::of::<Decimal>() {
+    let mut val = val.as_decimal().unwrap();
+    val *= Decimal::from(1_000_000u64);
+    Ok(val.to_u64().unwrap_or_default() as Balance)
+  } else if type_id == TypeId::of::<INT>() {
+    let val = val.as_int().unwrap();
+    Ok(val as Balance)
+  } else {
+    return Err(format!("Can't convert {} to `Balance`", val.type_name()).into());
+  }
+}
 
 pub enum Op {
   Add,
@@ -150,9 +165,24 @@ impl MercatUtils {
     &mut self,
     account: Account,
     encrypted_value: EncryptedAmount,
-  ) -> Result<i64, Box<EvalAltResult>> {
-    let value = account.secret.enc_keys.secret.decrypt(&encrypted_value)
-        .map_err(|e| e.to_string())? as i64;
+  ) -> Result<Decimal, Box<EvalAltResult>> {
+    #[cfg(not(all(feature = "discrete_log", feature = "rayon")))]
+    let value = {
+      account.secret.enc_keys.secret.decrypt(&encrypted_value)
+    };
+    #[cfg(all(not(feature = "discrete_log"), feature = "rayon"))]
+    let value = {
+      account.secret.enc_keys.secret.decrypt_parallel(&encrypted_value)
+    };
+    #[cfg(feature = "discrete_log")]
+    let value = {
+      account.secret.enc_keys.secret.decrypt_discrete_log(&encrypted_value)
+    };
+
+    let mut value = Decimal::from_u64(value.map_err(|e| e.to_string())?)
+      .ok_or_else(|| format!("Failed to convert balance to `Decimal`"))?;
+    value /= Decimal::from(1_000_000);
+
     Ok(value)
   }
 
@@ -160,24 +190,31 @@ impl MercatUtils {
     &mut self,
     account: Account,
     encrypted_value: EncryptedAmount,
-    low: INT,
-    high: INT,
-  ) -> Option<i64> {
-    account.secret.enc_keys.secret
-        .decrypt_with_hint(&encrypted_value, low as Balance, high as Balance)
-        .map(|v| v as i64)
+    low: Dynamic,
+    high: Dynamic,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let balance = account.secret.enc_keys.secret
+      .decrypt_with_hint(
+        &encrypted_value,
+        to_balance(low)?,
+        to_balance(high)?,
+      )
+      .and_then(|v| Decimal::from_u64(v as u64))
+      .map(|v| Dynamic::from_decimal(v / Decimal::from(1_000_000)))
+      .unwrap_or_else(|| Dynamic::UNIT);
+    Ok(balance)
   }
 
   pub fn mint_asset(
     &mut self,
     issuer: Account,
-    amount: INT,
+    amount: Dynamic,
   ) -> Result<InitializedAssetTx, Box<EvalAltResult>> {
     Ok(
       self
         .mercat_mint_asset(
           issuer,
-          amount as Balance,
+          to_balance(amount)?,
         )
         .map_err(|e| e.to_string())?,
     )
@@ -208,9 +245,9 @@ impl MercatUtils {
     sender: Account,
     receiver: PubAccount,
     mediator: EncryptionPubKey,
-    amount: i64,
+    amount: Dynamic,
     pending_enc_balance: EncryptedAmount,
-    pending_balance: i64,
+    pending_balance: Dynamic,
   ) -> Result<InitializedTransferTx, Box<EvalAltResult>> {
     Ok(
       self
@@ -218,9 +255,9 @@ impl MercatUtils {
           sender,
           receiver,
           mediator,
-          amount as Balance,
+          to_balance(amount)?,
           pending_enc_balance,
-          pending_balance as Balance,
+          to_balance(pending_balance)?,
         )
         .map_err(|e| e.to_string())?,
     )
@@ -253,23 +290,18 @@ impl MercatUtils {
       )
       .map_err(|error| Error::LibraryError { error })?;
 
-    info!(
-      "CLI log: Initialized Transaction as hex:\n0x{}\n",
-      hex::encode(init_tx.encode())
-    );
-
     Ok(init_tx)
   }
 
   pub fn finalize_tx(
     &mut self,
     receiver: Account,
-    amount: i64,
+    amount: Dynamic,
     init_tx: InitializedTransferTx,
-  ) -> Result<FinalizedTransferTx, Box<EvalAltResult>> {
+  ) -> Result<(), Box<EvalAltResult>> {
     Ok(
       self
-        .mercat_finalize_tx(receiver, amount as Balance, init_tx)
+        .mercat_finalize_tx(receiver, to_balance(amount)?, init_tx)
         .map_err(|e| e.to_string())?,
     )
   }
@@ -279,21 +311,15 @@ impl MercatUtils {
     receiver_account: Account,
     amount: Balance,
     init_tx: InitializedTransferTx,
-  ) -> Result<FinalizedTransferTx, Error> {
+  ) -> Result<(), Error> {
 
     // Finalize the transaction.
     let receiver = CtxReceiver {};
-    let finalized_tx = receiver
+    receiver
       .finalize_transaction(&init_tx, receiver_account, amount)
       .map_err(|error| Error::LibraryError { error })?;
 
-    // Save the artifacts to file.
-    info!(
-      "CLI log: Finalized Transaction as hex:\n0x{}\n",
-      hex::encode(finalized_tx.encode())
-    );
-
-    Ok(finalized_tx)
+    Ok(())
   }
 
   pub fn justify_tx(
@@ -303,8 +329,7 @@ impl MercatUtils {
     sender_balance: EncryptedAmount,
     receiver: PubAccount,
     init_tx: InitializedTransferTx,
-    finalized_tx: FinalizedTransferTx,
-  ) -> Result<JustifiedTransferTx, Box<EvalAltResult>> {
+  ) -> Result<(), Box<EvalAltResult>> {
     Ok(
       self
         .mercat_justify_tx(
@@ -313,7 +338,6 @@ impl MercatUtils {
           sender_balance,
           receiver,
           init_tx,
-          finalized_tx,
         )
         .map_err(|e| e.to_string())?,
     )
@@ -326,17 +350,15 @@ impl MercatUtils {
     sender_balance: EncryptedAmount,
     receiver: PubAccount,
     init_tx: InitializedTransferTx,
-    finalized_tx: FinalizedTransferTx,
-  ) -> Result<JustifiedTransferTx, Error> {
+  ) -> Result<(), Error> {
     let seed = self.seed();
     // Load the transaction, mediator's credentials, and issuer's public account.
     let mut rng = create_rng_from_seed(seed)?;
 
     // Justification.
-    let justified_tx = CtxMediator {}
+    CtxMediator {}
       .justify_transaction(
         &init_tx,
-        &finalized_tx,
         AmountSource::Encrypted(&mediator.encryption_key),
         &sender,
         &sender_balance,
@@ -346,12 +368,7 @@ impl MercatUtils {
       )
       .map_err(|error| Error::LibraryError { error })?;
 
-    info!(
-      "CLI log: Justified Transaction as hex:\n0x{}\n",
-      hex::encode(justified_tx.encode())
-    );
-
-    Ok(justified_tx)
+    Ok(())
   }
 
   pub fn add_balance(&mut self, first: String, second: String) -> String {
@@ -373,23 +390,6 @@ impl MercatUtils {
       Op::Subtract => format!("0x{}", hex::encode((first - second).encode())),
     }
   }
-}
-
-pub fn init_base64(name: &str, types: &mut Types) -> Result<(), Box<EvalAltResult>> {
-  types.custom_encode(
-    name,
-    TypeId::of::<ImmutableString>(),
-    |value, data| {
-      let value = value.cast::<ImmutableString>();
-      data.encode(value.as_str());
-      Ok(())
-    },
-  )?;
-  types.custom_decode(
-    name,
-    |mut input, _is_compact| Ok(Dynamic::from(String::decode(&mut input)?)),
-  )?;
-  Ok(())
 }
 
 pub fn init_vec_encoded<T: Decode + Encode + Clone + Send + Sync + 'static>(name: &str, types: &mut Types) -> Result<(), Box<EvalAltResult>> {
@@ -452,7 +452,7 @@ pub fn init_engine(
     .register_result_fn("create_secret_account", MercatUtils::create_secret_account)
     .register_result_fn("mint_asset", MercatUtils::mint_asset)
     .register_result_fn("decrypt_balance", MercatUtils::decrypt_balance)
-    .register_fn("decrypt_balance_with_hint", MercatUtils::decrypt_balance_with_hint)
+    .register_result_fn("decrypt_balance_with_hint", MercatUtils::decrypt_balance_with_hint)
     .register_result_fn("create_tx", MercatUtils::create_tx)
     .register_result_fn("finalize_tx", MercatUtils::finalize_tx)
     .register_result_fn("justify_tx", MercatUtils::justify_tx)
@@ -460,49 +460,30 @@ pub fn init_engine(
     .register_fn("sub_balance", MercatUtils::sub_balance)
     .register_type_with_name::<PubAccountTx>("PubAccountTx")
     .register_get("account", |v: &mut PubAccountTx| v.pub_account.clone())
-    .register_get("base64", |v: &mut PubAccountTx| base64::encode(v.encode()))
     .register_fn("to_string", hex_to_string::<PubAccountTx>)
     .register_type_with_name::<Account>("Account")
     .register_type_with_name::<MediatorAccount>("MediatorAccount")
     .register_get("pub_key", |v: &mut MediatorAccount| v.encryption_key.public)
     .register_type_with_name::<PubAccount>("PubAccount")
     .register_get("pub_key", |v: &mut PubAccount| v.owner_enc_pub_key)
-    .register_get("base64", |v: &mut PubAccount| base64::encode(v.encode()))
     .register_fn("to_string", hex_to_string::<PubAccount>)
     .register_type_with_name::<EncryptedAmount>("EncryptedAmount")
-    .register_get("base64", |v: &mut EncryptedAmount| {
-      base64::encode(v.encode())
-    })
     .register_fn("to_string", hex_to_string::<EncryptedAmount>)
     .register_type_with_name::<EncryptionPubKey>("EncryptionPubKey")
-    .register_result_fn("encrypt_amount", |k: &mut EncryptionPubKey, amount: INT| {
+    .register_result_fn("encrypt_amount", |k: &mut EncryptionPubKey, amount: Dynamic| {
+      let amount = to_balance(amount)?;
       let mut rng = rand::thread_rng();
-      let (_, enc_amount) = k.encrypt_value((amount as Balance).into(), &mut rng);
+      let (_, enc_amount) = k.encrypt_value(amount.into(), &mut rng);
       Ok(enc_amount as EncryptedAmount)
-    })
-    .register_get("base64", |k: &mut EncryptionPubKey| {
-      base64::encode(k.encode())
     })
     .register_fn("to_string", hex_to_string::<EncryptionPubKey>)
     .register_type_with_name::<InitializedAssetTx>("InitializedAssetTx")
-    .register_get("base64", |tx: &mut InitializedAssetTx| {
-      base64::encode(tx.encode())
-    })
     .register_fn("to_string", hex_to_string::<InitializedAssetTx>)
     .register_type_with_name::<InitializedTransferTx>("InitializedTransferTx")
-    .register_get("base64", |tx: &mut InitializedTransferTx| {
-      base64::encode(tx.encode())
-    })
     .register_fn("to_string", hex_to_string::<InitializedTransferTx>)
     .register_type_with_name::<FinalizedTransferTx>("FinalizedTransferTx")
-    .register_get("base64", |tx: &mut FinalizedTransferTx| {
-      base64::encode(tx.encode())
-    })
     .register_fn("to_string", hex_to_string::<FinalizedTransferTx>)
     .register_type_with_name::<JustifiedTransferTx>("JustifiedTransferTx")
-    .register_get("base64", |tx: &mut JustifiedTransferTx| {
-      base64::encode(tx.encode())
-    })
     .register_fn("to_string", hex_to_string::<JustifiedTransferTx>);
 
   Ok(())

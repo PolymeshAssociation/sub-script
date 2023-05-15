@@ -24,41 +24,59 @@ fn setup_user(name, polyx, ticker) {
 	user;
 }
 
-fn create_mercat_account(user) {
-	let mercat = #{};
+fn create_mercat_account() {
+	let mercat = #{ balance: 0.0 };
 	mercat.sec = MercatUtils.create_secret_account();
 	mercat.acc_tx = MercatUtils.create_account_tx(mercat.sec);
 	mercat.acc = mercat.acc_tx.account;
 	mercat.pub_key = mercat.acc.pub_key;
-	print(`${user.name} pub_key = ${mercat.pub_key}`);
-	//print(`${user.name} tx = ${mercat.acc_tx}`);
+	print(`${this.name} pub_key = ${mercat.pub_key}`);
+	//print(`${this.name} tx = ${mercat.acc_tx}`);
 
-	user.mercat = mercat;
-	user;
+	this.mercat = mercat;
 }
 
-fn create_mercat_mediator(user) {
+fn create_mercat_mediator() {
 	let mediator = #{};
 	mediator.sec = MercatUtils.create_mediator();
 	mediator.acc = mediator.sec.pub_key;
-	print(`${user.name} mediator = ${mediator.acc}`);
+	print(`${this.name} mediator = ${mediator.acc}`);
 
-	user.mediator = mediator;
-	user;
+	this.mediator = mediator;
 }
 
-fn get_mercat_balance(user) {
+fn get_mercat_balance() {
 	// Get user's token balance from the chain.
 	let enc_balance = STORAGE.double_map(
 	  "ConfidentialAsset", "MercatAccountBalance",
-		user.mercat.pub_key, user.ticker,
+		this.mercat.pub_key, this.ticker,
 	);
-	let balance = MercatUtils.decrypt_balance(user.mercat.sec, enc_balance);
-	print(`${user.name}'s balance = ${balance}`);
+	// Try decrypt with hint
+	let hint = this.mercat.balance;
+	let balance = MercatUtils.decrypt_balance_with_hint(this.mercat.sec, enc_balance, hint, hint);
+	if balance == () {
+		balance = MercatUtils.decrypt_balance(this.mercat.sec, enc_balance);
+	}
+	print(`${this.name}'s balance = ${balance}`);
 	return #{
 		balance: balance,
 		enc: enc_balance,
 	};
+}
+
+fn update_mercat_balance(amount) {
+	this.mercat.balance += amount;
+}
+
+fn tx_mint_asset(ticker, amount) {
+	let mint_tx = MercatUtils.mint_asset(this.mercat.sec, amount);
+	this.update_mercat_balance(amount);
+	//print(`mint_tx = ${mint_tx}`);
+	return this.acc.submit(ConfidentialAsset.mint_confidential_asset(
+		ticker,
+		amount,
+		mint_tx,
+	));
 }
 
 // Test users.
@@ -79,27 +97,21 @@ results += issuer.acc.submit(ConfidentialAsset.create_confidential_asset(
 // Setup MERCAT accounts
 //
 
-issuer = create_mercat_account(issuer);
+issuer.create_mercat_account();
 results += issuer.acc.submit(ConfidentialAsset.validate_mercat_account(ticker, issuer.mercat.acc_tx));
 
-investor = create_mercat_account(investor);
+investor.create_mercat_account();
 results += investor.acc.submit(ConfidentialAsset.validate_mercat_account(ticker, investor.mercat.acc_tx));
 
 //
 // Setup Mediator
 //
 
-mediator = create_mercat_mediator(mediator);
+mediator.create_mercat_mediator();
 results += mediator.acc.submit(ConfidentialAsset.add_mediator_mercat_account(mediator.mediator.acc));
 
-let issuer_balance = 1_000_000;
-let mint_tx = MercatUtils.mint_asset(issuer.mercat.sec, issuer_balance);
-//print(`mint_tx = ${mint_tx}`);
-results += issuer.acc.submit(ConfidentialAsset.mint_confidential_asset(
-	ticker,
-	issuer_balance / 1000000.0, // sub-script will scale `Balance` types (i.e. add 6 decimal places).
-	mint_tx,
-));
+let mint_amount = 10_000_000.0;
+results += issuer.tx_mint_asset(ticker, mint_amount);
 
 //
 // Setup venue and settlement transaction.
@@ -130,8 +142,8 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	let results = [];
 
 	// Get Issuer's balance from the chain.
-	let issuer_balance = get_mercat_balance(issuer);
-	get_mercat_balance(investor);
+	let issuer_balance = issuer.get_mercat_balance();
+	investor.get_mercat_balance();
 
 	let init_tx = MercatUtils.create_tx(
 			issuer.mercat.sec,
@@ -144,21 +156,30 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	//print(`init_tx = ${init_tx}`);
 	print("Issuer affirms with init_tx");
 	results += issuer.acc.submit(ConfidentialAsset.affirm_transaction(
-		transaction_id, 0,
-	  #{ sender: init_tx, receiver: (), mediator: () }
+		transaction_id,
+		#{ leg_id: 0, parity: #{ SenderProof: init_tx }}
 	));
-
-	// Wait for pending tx and show any errors.
-	print("Wait for sender affirm of transaction before sending receiver's affirm.");
-	p::wait_for_in_block(results);
-	results = [];
+	issuer.update_mercat_balance(-amount);
 
 	let finalize_tx = MercatUtils.finalize_tx(investor.mercat.sec, amount, init_tx);
 	//print(`finalize_tx = ${finalize_tx}`);
 	print("Ferdie affirms with finalize_tx");
 	results += investor.acc.submit(ConfidentialAsset.affirm_transaction(
-		transaction_id, 0,
-	  #{ sender: (), receiver: finalize_tx, mediator: () }
+		transaction_id,
+		#{ leg_id: 0, parity: #{ ReceiverAffirm: () }}
+	));
+
+	let justify_tx = MercatUtils.justify_tx(
+			mediator.mediator.sec,
+			issuer.mercat.acc,
+			issuer_balance.enc,
+			investor.mercat.acc,
+			init_tx);
+	//print(`justify_tx = ${justify_tx}`);
+	print("Mediator affirms with justify_tx");
+	results += mediator.acc.submit(ConfidentialAsset.affirm_transaction(
+		transaction_id,
+		#{ leg_id: 0, parity: #{ MediatorAffirm: () }}
 	));
 
 	// Wait for pending tx and show any errors.
@@ -166,36 +187,23 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	p::wait_for_in_block(results);
 	results = [];
 
-	let justify_tx = MercatUtils.justify_tx(
-			mediator.mediator.sec,
-			issuer.mercat.acc,
-			issuer_balance.enc,
-			investor.mercat.acc,
-			init_tx,
-			finalize_tx);
-	//print(`justify_tx = ${justify_tx}`);
-	print("Mediator affirms with justify_tx");
-	results += mediator.acc.submit(ConfidentialAsset.affirm_transaction(
-		transaction_id, 0,
-	  #{ sender: (), receiver: (), mediator: justify_tx }
-	));
-
 	print("Mediator executes the transaction");
 	results += mediator.acc.submit(ConfidentialAsset.execute_transaction(
 		transaction_id, 1
 	));
+	investor.update_mercat_balance(amount);
 
 	// Wait for pending tx and show any errors.
 	print("Wait for all transactions");
 	p::wait_for_in_block(results);
 }
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 10_000);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 10_000.01);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 15_000);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 15_000.015);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 35_000);
+run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 35_000.035);
 
 // Get Issuer's balance from the chain.
-get_mercat_balance(issuer);
-get_mercat_balance(investor);
+issuer.get_mercat_balance();
+investor.get_mercat_balance();

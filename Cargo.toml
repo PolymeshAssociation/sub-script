@@ -109,6 +109,10 @@ ledger = [
 	"ledger-apdu",
 ]
 
+# Faster Elgamal decryption.
+rayon = ["confidential_identity_core/rayon"]
+discrete_log = ["confidential_identity_core/discrete_log"]
+
 # Polymesh
 polymesh = [
 	"confidential_identity_v1",
@@ -139,6 +143,8 @@ no_std = [
 
 std = [
 	"confidential_identity_core/std",
+	"rayon",
+	"discrete_log",
 	"confidential_identity_v1/std",
 	"polymesh-primitives/std",
 	"polymesh-primitives/u64_backend",
