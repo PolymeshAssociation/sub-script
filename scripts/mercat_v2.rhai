@@ -53,8 +53,9 @@ fn get_mercat_balance() {
 	);
 	// Try decrypt with hint
 	let hint = this.mercat.balance;
-	let balance = MercatUtils.decrypt_balance_with_hint(this.mercat.sec, enc_balance, hint, hint);
+	let balance = MercatUtils.decrypt_balance_with_hint(this.mercat.sec, enc_balance, hint - 1.0, hint + 1.0);
 	if balance == () {
+		print(`--------------- Slow decrypt: ${this.name}, hint was: ${hint}`);
 		balance = MercatUtils.decrypt_balance(this.mercat.sec, enc_balance);
 	}
 	print(`${this.name}'s balance = ${balance}`);
@@ -65,6 +66,7 @@ fn get_mercat_balance() {
 }
 
 fn update_mercat_balance(amount) {
+	print(`Update balance: ${this.name}, balance=${this.mercat.balance}, amount=${amount}`);
 	this.mercat.balance += amount;
 }
 
@@ -122,14 +124,24 @@ let venue_id = 0;
 // Wait for previous transactions.
 p::wait_for_in_block(results);
 
-fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
-	let res = mediator.acc.submit(ConfidentialAsset.add_transaction(
-		venue_id,
+fn create_tx_state(venue_id, issuer, investor, mediator, ticker) {
+	return #{
+		venue_id: venue_id,
+		issuer: issuer,
+		investor: investor,
+		mediator: mediator,
+		ticker: ticker,
+	};
+}
+
+fn transfer_tokens(amount) {
+	let res = this.mediator.acc.submit(ConfidentialAsset.add_transaction(
+		this.venue_id,
 		[#{
-			ticker: ticker,
-			sender: issuer.mercat.pub_key,
-			receiver: investor.mercat.pub_key,
-			mediator: mediator.did,
+			ticker: this.ticker,
+			sender: this.issuer.mercat.pub_key,
+			receiver: this.investor.mercat.pub_key,
+			mediator: this.mediator.did,
 		}]
 	));
 	let transaction_id = ();
@@ -142,44 +154,44 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	let results = [];
 
 	// Get Issuer's balance from the chain.
-	let issuer_balance = issuer.get_mercat_balance();
-	investor.get_mercat_balance();
+	let issuer_balance = this.issuer.get_mercat_balance();
+	this.investor.get_mercat_balance();
 
 	let init_tx = MercatUtils.create_tx(
-			issuer.mercat.sec,
-			investor.mercat.acc,
-			mediator.mediator.acc,
+			this.issuer.mercat.sec,
+			this.investor.mercat.acc,
+			this.mediator.mediator.acc,
 			amount,
 			issuer_balance.enc,
 			issuer_balance.balance,
 		);
 	//print(`init_tx = ${init_tx}`);
 	print("Issuer affirms with init_tx");
-	results += issuer.acc.submit(ConfidentialAsset.affirm_transaction(
+	results += this.issuer.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ SenderProof: init_tx }}
+		#{ leg_id: 0, parity: #{ Sender: init_tx }}
 	));
-	issuer.update_mercat_balance(-amount);
+	this.issuer.update_mercat_balance(-amount);
 
-	let finalize_tx = MercatUtils.finalize_tx(investor.mercat.sec, amount, init_tx);
+	let finalize_tx = MercatUtils.finalize_tx(this.investor.mercat.sec, amount, init_tx);
 	//print(`finalize_tx = ${finalize_tx}`);
-	print("Ferdie affirms with finalize_tx");
-	results += investor.acc.submit(ConfidentialAsset.affirm_transaction(
+	print("Investor affirms with finalize_tx");
+	results += this.investor.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ ReceiverAffirm: () }}
+		#{ leg_id: 0, parity: #{ Receiver: () }}
 	));
 
 	let justify_tx = MercatUtils.justify_tx(
-			mediator.mediator.sec,
-			issuer.mercat.acc,
+			this.mediator.mediator.sec,
+			this.issuer.mercat.acc,
 			issuer_balance.enc,
-			investor.mercat.acc,
+			this.investor.mercat.acc,
 			init_tx);
 	//print(`justify_tx = ${justify_tx}`);
 	print("Mediator affirms with justify_tx");
-	results += mediator.acc.submit(ConfidentialAsset.affirm_transaction(
+	results += this.mediator.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ MediatorAffirm: () }}
+		#{ leg_id: 0, parity: #{ Mediator: () }}
 	));
 
 	// Wait for pending tx and show any errors.
@@ -188,22 +200,33 @@ fn run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, amount) {
 	results = [];
 
 	print("Mediator executes the transaction");
-	results += mediator.acc.submit(ConfidentialAsset.execute_transaction(
+	results += this.mediator.acc.submit(ConfidentialAsset.execute_transaction(
 		transaction_id, 1
 	));
-	investor.update_mercat_balance(amount);
 
 	// Wait for pending tx and show any errors.
 	print("Wait for all transactions");
 	p::wait_for_in_block(results);
+
+	// Apply the investor's incoming balance to their main balance.
+	let res = this.investor.acc.submit(ConfidentialAsset.apply_incoming_balance(
+		this.investor.mercat.pub_key,
+		this.ticker,
+	));
+	this.investor.update_mercat_balance(amount);
+	return res;
 }
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 10_000.01);
+let tx = create_tx_state(venue_id, issuer, investor, mediator, ticker);
+tx.transfer_tokens(10_000.01);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 15_000.015);
+tx.transfer_tokens(15_000.015);
 
-run_mercat_settlement(venue_id, issuer, investor, mediator, ticker, 35_000.035);
+let res = tx.transfer_tokens(35_000.035);
+
+// Wait for last `apply_incoming_balance` tx.
+let in_block = res.is_in_block;
 
 // Get Issuer's balance from the chain.
-issuer.get_mercat_balance();
-investor.get_mercat_balance();
+tx.issuer.get_mercat_balance();
+tx.investor.get_mercat_balance();

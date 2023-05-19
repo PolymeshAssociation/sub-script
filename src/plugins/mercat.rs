@@ -193,12 +193,10 @@ impl MercatUtils {
     low: Dynamic,
     high: Dynamic,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let low = to_balance(low)?;
+    let high = to_balance(high)?;
     let balance = account.secret.enc_keys.secret
-      .decrypt_with_hint(
-        &encrypted_value,
-        to_balance(low)?,
-        to_balance(high)?,
-      )
+      .decrypt_with_hint(&encrypted_value, low, high)
       .and_then(|v| Decimal::from_u64(v as u64))
       .map(|v| Dynamic::from_decimal(v / Decimal::from(1_000_000)))
       .unwrap_or_else(|| Dynamic::UNIT);
@@ -420,14 +418,27 @@ pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
-    init_vec_encoded::<PubAccountTx>("pallet_confidential_asset::PubAccountTxWrapper", types)?;
-    init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::MercatAccount", types)?;
-    init_vec_encoded::<EncryptionPubKey>("pallet_confidential_asset::EncryptionPubKeyWrapper", types)?;
-    init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::EncryptedAmountWrapper", types)?;
-    init_vec_encoded::<InitializedAssetTx>("pallet_confidential_asset::InitializedAssetTxWrapper", types)?;
-    init_vec_encoded::<InitializedTransferTx>("pallet_confidential_asset::InitializedTransferTxWrapper", types)?;
-    init_vec_encoded::<FinalizedTransferTx>("pallet_confidential_asset::FinalizedTransferTxWrapper", types)?;
-    init_vec_encoded::<JustifiedTransferTx>("pallet_confidential_asset::JustifiedTransferTxWrapper", types)?;
+    init_vec_encoded::<PubAccountTx>("pallet_confidential_asset::MercatPubAccountTx", types)?;
+    init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::MercatEncryptedAmount", types)?;
+    init_vec_encoded::<InitializedAssetTx>("pallet_confidential_asset::MercatMintAssetTx", types)?;
+    init_vec_encoded::<InitializedTransferTx>("pallet_confidential_asset::SenderProof", types)?;
+    // Don't use vec wrapper for `MercatAccount`.
+    types.custom_encode(
+      "pallet_confidential_asset::MercatAccount",
+      TypeId::of::<EncryptionPubKey>(),
+      move |value, data| {
+        let val = value.cast::<EncryptionPubKey>();
+        data.encode(val);
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "pallet_confidential_asset::MercatAccount",
+      |mut input, _is_compact| {
+        Ok(Dynamic::from(EncryptionPubKey::decode(&mut input)?))
+      }
+    )?;
+
     Ok(())
   });
   Ok(())

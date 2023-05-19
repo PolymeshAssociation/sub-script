@@ -1898,10 +1898,10 @@ dependencies = [
 name = "mercat-common"
 version = "1.1.0"
 dependencies = [
- "base64 0.12.3",
  "confidential_identity_core",
  "curve25519-dalek-ng",
  "failure",
+ "hex",
  "linked-hash-map",
  "log",
  "mercat",
