@@ -422,7 +422,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     init_vec_encoded::<EncryptedAmount>("pallet_confidential_asset::MercatEncryptedAmount", types)?;
     init_vec_encoded::<InitializedAssetTx>("pallet_confidential_asset::MercatMintAssetTx", types)?;
     init_vec_encoded::<InitializedTransferTx>("pallet_confidential_asset::SenderProof", types)?;
-    // Don't use vec wrapper for `MercatAccount`.
+    // Don't use vec wrapper for `MercatAccount` or `EncryptedAmount`.
     types.custom_encode(
       "pallet_confidential_asset::MercatAccount",
       TypeId::of::<EncryptionPubKey>(),
@@ -436,6 +436,36 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       "pallet_confidential_asset::MercatAccount",
       |mut input, _is_compact| {
         Ok(Dynamic::from(EncryptionPubKey::decode(&mut input)?))
+      }
+    )?;
+    types.custom_encode(
+      "confidential_identity_core::asset_proofs::elgamal_encryption::CipherText",
+      TypeId::of::<EncryptedAmount>(),
+      move |value, data| {
+        let val = value.cast::<EncryptedAmount>();
+        data.encode(val);
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "confidential_identity_core::asset_proofs::elgamal_encryption::CipherText",
+      |mut input, _is_compact| {
+        Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?))
+      }
+    )?;
+    types.custom_encode(
+      "EncryptedAmount",
+      TypeId::of::<EncryptedAmount>(),
+      move |value, data| {
+        let val = value.cast::<EncryptedAmount>();
+        data.encode(val);
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "EncryptedAmount",
+      |mut input, _is_compact| {
+        Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?))
       }
     )?;
 

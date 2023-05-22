@@ -81,6 +81,17 @@ fn tx_mint_asset(ticker, amount) {
 	));
 }
 
+fn create_venue() {
+	// Get next venue id.
+	let venue_id = STORAGE.value("ConfidentialAsset", "VenueCounter");
+	// Create venue.
+	let res = this.acc.submit(ConfidentialAsset.create_venue());
+	if !res.is_success {
+		print(`call failed: ${res.result()}`);
+	}
+	return venue_id;
+}
+
 // Test users.
 let ticker = `${prefix}T`;
 let issuer = setup_user(`${prefix}_issuer`, 100000.0, ticker);
@@ -116,15 +127,12 @@ let mint_amount = 10_000_000.0;
 results += issuer.tx_mint_asset(ticker, mint_amount);
 
 //
-// Setup venue and settlement transaction.
+// Transaction state management.
 //
-//let venue_id = p::get_or_create_venue(mediator.acc, #{ Other: () });
-let venue_id = 0;
 
-// Wait for previous transactions.
-p::wait_for_in_block(results);
-
-fn create_tx_state(venue_id, issuer, investor, mediator, ticker) {
+fn create_tx_state(issuer, investor, mediator, ticker) {
+	// Setup venue.
+	let venue_id = mediator.create_venue();
 	return #{
 		venue_id: venue_id,
 		issuer: issuer,
@@ -142,7 +150,8 @@ fn transfer_tokens(amount) {
 			sender: this.issuer.mercat.pub_key,
 			receiver: this.investor.mercat.pub_key,
 			mediator: this.mediator.did,
-		}]
+		}],
+		"01234567890123456789012345678901"
 	));
 	let transaction_id = ();
 	print("get transaction_id from events.");
@@ -169,7 +178,7 @@ fn transfer_tokens(amount) {
 	print("Issuer affirms with init_tx");
 	results += this.issuer.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ Sender: init_tx }}
+		#{ leg_id: 0, party: #{ Sender: init_tx }}
 	));
 	this.issuer.update_mercat_balance(-amount);
 
@@ -178,7 +187,7 @@ fn transfer_tokens(amount) {
 	print("Investor affirms with finalize_tx");
 	results += this.investor.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ Receiver: () }}
+		#{ leg_id: 0, party: #{ Receiver: () }}
 	));
 
 	let justify_tx = MercatUtils.justify_tx(
@@ -191,7 +200,7 @@ fn transfer_tokens(amount) {
 	print("Mediator affirms with justify_tx");
 	results += this.mediator.acc.submit(ConfidentialAsset.affirm_transaction(
 		transaction_id,
-		#{ leg_id: 0, parity: #{ Mediator: () }}
+		#{ leg_id: 0, party: #{ Mediator: () }}
 	));
 
 	// Wait for pending tx and show any errors.
@@ -217,7 +226,7 @@ fn transfer_tokens(amount) {
 	return res;
 }
 
-let tx = create_tx_state(venue_id, issuer, investor, mediator, ticker);
+let tx = create_tx_state(issuer, investor, mediator, ticker);
 tx.transfer_tokens(10_000.01);
 
 tx.transfer_tokens(15_000.015);
