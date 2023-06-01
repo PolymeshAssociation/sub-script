@@ -395,19 +395,26 @@ impl InnerClient {
     Ok((token, xthex))
   }
 
-  pub fn submit_call(
+  pub fn sign_call(
     &self,
     user: &User,
     call: EncodedCall,
-  ) -> Result<(RequestToken, String), Box<EvalAltResult>> {
+  ) -> String {
     let extra = Extra::new(Era::Immortal, user.nonce);
     let payload = SignedPayload::new(&call, &extra, self.get_signed_extra());
 
     let sig = payload.using_encoded(|p| user.pair.sign(p));
 
     let xt = ExtrinsicV4::signed(user.acc(), sig.into(), extra, call);
-    let xthex = xt.to_hex();
+    xt.to_hex()
+  }
 
+  pub fn submit_call(
+    &self,
+    user: &User,
+    call: EncodedCall,
+  ) -> Result<(RequestToken, String), Box<EvalAltResult>> {
+    let xthex = self.sign_call(user, call);
     self.submit(xthex)
   }
 
@@ -571,6 +578,14 @@ impl Client {
 
   pub fn submit(&self, xthex: String) -> Result<ExtrinsicCallResult, Box<EvalAltResult>> {
     self.call_results(self.inner.submit(xthex))
+  }
+
+  pub fn sign_call(
+    &self,
+    user: &User,
+    call: EncodedCall,
+  ) -> String {
+    self.inner.sign_call(user, call)
   }
 
   pub fn submit_call(

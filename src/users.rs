@@ -56,6 +56,22 @@ impl User {
     sig.verify(&data[..], &self.acc())
   }
 
+  pub fn sign_call(
+    &mut self,
+    call: EncodedCall,
+  ) -> Result<String, Box<EvalAltResult>> {
+    // Check if we need to load the `nonce` for this user.
+    if self.nonce == 0u32 {
+      self.nonce = self.client.get_nonce(self.acc())?.unwrap_or(0);
+    }
+    let xthex = self.client.sign_call(self, call);
+
+    // Update the nonce.
+    self.nonce += 1;
+
+    Ok(xthex)
+  }
+
   pub fn submit_call(
     &mut self,
     call: EncodedCall,
@@ -99,6 +115,13 @@ impl SharedUser {
 
   pub fn verify_sig(&mut self, data: Vec<u8>, sig: MultiSignature) -> bool {
     self.0.read().unwrap().verify_sig(data, &sig)
+  }
+
+  pub fn sign_call(
+    &mut self,
+    call: EncodedCall,
+  ) -> Result<String, Box<EvalAltResult>> {
+    self.0.write().unwrap().sign_call(call)
   }
 
   pub fn submit_call(
@@ -183,6 +206,7 @@ pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
     .register_fn("sign", SharedUser::sign_data)
     .register_fn("verify", SharedUser::verify_sig)
     .register_result_fn("submit", SharedUser::submit_call)
+    .register_result_fn("sign_call", SharedUser::sign_call)
     .register_type_with_name::<AccountId>("AccountId")
     .register_fn("to_string", |acc: &mut AccountId| acc.to_string())
     .register_fn("==", |acc1: AccountId, acc2: AccountId| acc1 == acc2)
