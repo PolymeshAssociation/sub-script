@@ -5,6 +5,7 @@
   "TaskAddress<BlockNumber>": "(BlockNumber, u32)",
   "schedule::Period<BlockNumber>": "(BlockNumber, u32)",
   "schedule::Priority": "u8",
+  "TaskName": "[u8; 32]",
   "Scheduled<<T as Config>::Call, BlockNumber, PalletsOrigin, AccountId>": {
     "maybe_id": "Option<Vec<u8>>",
     "priority": "schedule::Priority",
