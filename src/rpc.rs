@@ -18,13 +18,17 @@ use crate::block::{BlockHeader, SignedBlock};
 use crate::types::TypeLookup;
 use crate::RuntimeVersion;
 
-pub type ConnectionId = u16;
+pub type ConnectionId = u32;
 pub type RequestId = u32;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct RequestToken(pub ConnectionId, pub RequestId);
 
 impl RequestToken {
+  fn conn_id(&self) -> ConnectionId {
+    self.0
+  }
+
   fn req_id(&self) -> RequestId {
     self.1
   }
@@ -113,7 +117,7 @@ struct RpcResp {
   params: Option<RpcRespParams>,
 }
 
-struct RpcRequest {
+pub struct RpcRequest {
   method: String,
   params: Value,
   is_subscription: bool,
@@ -430,8 +434,95 @@ impl Factory for RpcConnection {
   }
 }
 
+pub struct InnerRpcConnectionPool {
+  url: String,
+  next_id: AtomicU16,
+  send_next_id: AtomicU16,
+  connections: DashMap<ConnectionId, RpcConnection>,
+}
+
+impl InnerRpcConnectionPool {
+  pub fn new(url: &str) -> Result<Arc<Self>, Box<EvalAltResult>> {
+    let pool = Arc::new(Self {
+      url: url.into(),
+      next_id: 0.into(),
+      send_next_id: 0.into(),
+      connections: DashMap::new(),
+    });
+    // Spawn at least one connection.
+    pool.spawn_new_connection()?;
+    Ok(pool)
+  }
+
+  fn get_next_id(&self) -> ConnectionId {
+    self.next_id.fetch_add(1, Ordering::Relaxed) as ConnectionId
+  }
+
+  // Round-robin selection of the next connection.
+  fn get_send_next_id(&self) -> ConnectionId {
+    let count = self.connections.len() as u16;
+    self.send_next_id.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
+      let next = id + 1;
+      if next >= count {
+        Some(0)
+      } else {
+        Some(next)
+      }
+    }).unwrap_or_default() as ConnectionId
+  }
+
+  fn spawn_new_connection(&self) -> Result<(), Box<EvalAltResult>> {
+    let id = self.get_next_id();
+    eprintln!("--- spawn_new_connection: id={id:?}, len={}", self.connections.len());
+    let conn = RpcConnection::new(id, &self.url)?;
+    conn.spawn().map_err(|e| e.to_string())?;
+    self.connections.insert(id, conn);
+    Ok(())
+  }
+
+  pub fn spawn_min_connections(&self, min: usize) -> Result<(), Box<EvalAltResult>> {
+    eprintln!("--- spawn_min_connections: min={min:?}, len={}", self.connections.len());
+    while self.connections.len() < min {
+      self.spawn_new_connection()?;
+    }
+    Ok(())
+  }
+
+  pub fn send(&self, req: RpcRequest) -> Result<RequestToken, Box<EvalAltResult>> {
+    let id = self.get_send_next_id();
+    if let Some(connection) = self.connections.get(&id) {
+      return connection.send(req);
+    }
+    Err(format!("Failed to get an RPC connection from the pool").into())
+  }
+
+  pub fn close_request(&self, token: RequestToken) -> Result<(), Box<EvalAltResult>> {
+    if let Some(connection) = self.connections.get(&token.conn_id()) {
+      return connection.close_request(token);
+    }
+    // If the connection was closed, then the request has already been closed.
+    Ok(())
+  }
+}
+
+#[derive(Clone)]
+pub struct RpcConnectionPool(Arc<InnerRpcConnectionPool>);
+
+impl std::ops::Deref for RpcConnectionPool {
+  type Target = InnerRpcConnectionPool;
+  fn deref(&self) -> &InnerRpcConnectionPool {
+    &*self.0
+  }
+}
+
+impl RpcConnectionPool {
+  pub fn new(url: &str) -> Result<Self, Box<EvalAltResult>> {
+    Ok(Self(InnerRpcConnectionPool::new(url)?))
+  }
+}
+
 pub struct InnerRpcHandler {
-  conn: RpcConnection,
+  pool: RpcConnectionPool,
   // TODO: Move these into a `thread_local` struct.
   // Each thread gets their own channel for waiting for responses and updates map.
   resp_tx: RespSender,
@@ -440,10 +531,10 @@ pub struct InnerRpcHandler {
 }
 
 impl InnerRpcHandler {
-  fn new(conn: RpcConnection) -> Arc<Self> {
+  fn new(pool: RpcConnectionPool) -> Arc<Self> {
     let (resp_tx, resp_rx) = crossbeam_channel::unbounded();
     Arc::new(Self {
-      conn,
+      pool,
       resp_tx,
       resp_rx: Mutex::new(resp_rx),
       updates: DashMap::new(),
@@ -451,11 +542,11 @@ impl InnerRpcHandler {
   }
 
   fn send(&self, req: RpcRequest) -> Result<RequestToken, Box<EvalAltResult>> {
-    self.conn.send(req)
+    self.pool.send(req)
   }
 
   pub fn close_request(&self, token: RequestToken) -> Result<(), Box<EvalAltResult>> {
-    self.conn.close_request(token)
+    self.pool.close_request(token)
   }
 
   pub fn get_response(&self, token: RequestToken) -> Result<ResponseEvent, Box<EvalAltResult>> {
@@ -506,8 +597,8 @@ impl std::ops::Deref for RpcHandler {
 }
 
 impl RpcHandler {
-  pub fn new(conn: RpcConnection) -> Self {
-    Self(InnerRpcHandler::new(conn))
+  pub fn new(pool: RpcConnectionPool) -> Self {
+    Self(InnerRpcHandler::new(pool))
   }
 
   pub fn async_call_method(
@@ -587,14 +678,7 @@ impl RpcHandler {
 }
 
 struct InnerRpcManager {
-  next_id: AtomicU16,
-  connections: DashMap<String, RpcConnection>,
-}
-
-impl InnerRpcManager {
-  fn get_next_id(&self) -> ConnectionId {
-    self.next_id.fetch_add(1, Ordering::Relaxed) as ConnectionId
-  }
+  pools: DashMap<String, RpcConnectionPool>,
 }
 
 #[derive(Clone)]
@@ -603,30 +687,34 @@ pub struct RpcManager(Arc<InnerRpcManager>);
 impl RpcManager {
   pub fn new() -> Self {
     Self(Arc::new(InnerRpcManager {
-      next_id: 1.into(),
-      connections: DashMap::new(),
+      pools: DashMap::new(),
     }))
   }
 
-  fn get_connection(&self, url: &str) -> Result<RpcConnection, Box<EvalAltResult>> {
-    if let Some(connection) = self.0.connections.get(url) {
-      return Ok(connection.clone());
+  fn get_pool(&self, url: &str) -> Result<RpcConnectionPool, Box<EvalAltResult>> {
+    if let Some(pool) = self.0.pools.get(url) {
+      return Ok(pool.clone());
     }
-    let id = self.0.get_next_id();
-    let connection = RpcConnection::new(id, url)?;
-    self.0.connections.insert(url.into(), connection.clone());
-    Ok(connection)
+    let pool = RpcConnectionPool::new(url)?;
+    self.0.pools.insert(url.into(), pool.clone());
+    Ok(pool)
+  }
+
+  pub fn set_min_connections(&self, min: usize) -> Result<(), Box<EvalAltResult>> {
+    for pool in &self.0.pools {
+      pool.spawn_min_connections(min)?;
+    }
+    Ok(())
   }
 
   pub fn new_connection(&self, url: &str) -> Result<RpcHandler, Box<EvalAltResult>> {
-    let id = self.0.get_next_id();
-    let conn = RpcConnection::new(id, url)?;
-    Ok(RpcHandler::new(conn))
+    let pool = RpcConnectionPool::new(url)?;
+    Ok(RpcHandler::new(pool))
   }
 
   pub fn get_client(&self, url: &str) -> Result<RpcHandler, Box<EvalAltResult>> {
-    let conn = self.get_connection(url)?;
-    Ok(RpcHandler::new(conn))
+    let pool = self.get_pool(url)?;
+    Ok(RpcHandler::new(pool))
   }
 }
 
@@ -725,6 +813,9 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       |client: &mut RpcHandler, token: RequestToken| client.close_request(token),
     )
     .register_type_with_name::<RpcManager>("RpcManager")
+    .register_result_fn("set_min_connections", |rpc: &mut RpcManager, min: i64| {
+      rpc.set_min_connections(min as usize)
+    })
     .register_result_fn("get_client", |rpc: &mut RpcManager, url: &str| {
       rpc.get_client(url)
     })

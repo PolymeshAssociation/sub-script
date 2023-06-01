@@ -852,6 +852,7 @@ pub fn init_engine(
 ) -> Result<Client, Box<EvalAltResult>> {
   engine
     .register_type_with_name::<Client>("Client")
+    .register_result_fn("client_connect", Client::connect)
     .register_result_fn(
       "get_block_hash",
       |client: &mut Client, num: i64| match client.get_block_hash(num as u64)? {
