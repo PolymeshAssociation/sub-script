@@ -822,6 +822,10 @@ impl NamedType {
     Ok(data.into_inner())
   }
 
+  pub fn decode_value(&self, data: &mut &[u8]) -> Result<Dynamic, Box<EvalAltResult>> {
+    Ok(self.ty_meta.decode_value(data, false).map_err(|e| e.to_string())?)
+  }
+
   pub fn decode(&self, data: Vec<u8>) -> Result<Dynamic, Box<EvalAltResult>> {
     self.ty_meta.decode(data)
   }
@@ -923,6 +927,7 @@ impl KeyHasher {
     &self,
     prefix: &StorageKey,
     key: &StorageKey,
+    only_last_key: bool
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let (key_prefix, key) = key.0.split_at(prefix.0.len());
     if key_prefix != prefix.as_ref() {
@@ -932,10 +937,16 @@ impl KeyHasher {
     match self.type_hashers.len() {
       0 => Err(format!("This storage isn't a map type."))?,
       1 => {
-        Ok(self.decode_hash_key(0, key)?)
+        Ok(self.decode_hash_key(0, &mut &key[..])?)
+      }
+      2 if only_last_key => {
+        Ok(self.decode_hash_key(1, &mut &key[..])?)
       }
       2 => {
-        Ok(self.decode_hash_key(1, key)?)
+        let data = &mut &key[..];
+        let key0 = self.decode_hash_key(0, data)?;
+        let key1 = self.decode_hash_key(1, data)?;
+        Ok(Dynamic::from_array(vec![key0, key1]))
       }
       _ => Err(format!("This storage isn't a double map type."))?,
     }
@@ -1007,10 +1018,10 @@ impl KeyHasher {
   fn decode_hash_key(
     &self,
     idx: usize,
-    key: &[u8],
+    key: &mut &[u8],
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let (ty, hasher) = &self.type_hashers[idx];
-    let key = match hasher {
+    *key = match hasher {
       KeyHasherType::Blake2_128Concat => {
         &key[16..]
       }
@@ -1024,7 +1035,7 @@ impl KeyHasher {
         return Err(format!("The key hasher {:?} isn't reversible.", hasher).into());
       }
     };
-    Ok(ty.decode(key.to_vec())?)
+    Ok(ty.decode_value(key)?)
   }
 
   pub fn get_map_key(
@@ -1400,9 +1411,10 @@ impl StorageMetadata {
     &self,
     prefix: &StorageKey,
     key: &StorageKey,
+    only_last_key: bool,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     match &self.key_hasher {
-      Some(hasher) => hasher.decode_map_key(prefix, key),
+      Some(hasher) => hasher.decode_map_key(prefix, key, only_last_key),
       None => Err(format!("This storage type doesn't have keys.").into()),
     }
   }
@@ -1429,6 +1441,11 @@ impl StorageMetadata {
   fn docs(&mut self) -> String {
     self.docs.to_string()
   }
+
+  fn prefix_key(&mut self) -> String {
+    format!("0x{}", hex::encode(self.get_prefix_key()))
+  }
+
 
   fn to_string(&mut self) -> String {
     format!(
@@ -2201,6 +2218,7 @@ pub fn init_engine(
     .register_indexer_get_result(ModuleMetadata::indexer_get)
     .register_type_with_name::<StorageMetadata>("StorageMetadata")
     .register_fn("to_string", StorageMetadata::to_string)
+    .register_get("prefix_key", StorageMetadata::prefix_key)
     .register_get("name", StorageMetadata::name)
     .register_get("value_type_name", StorageMetadata::value_type_name)
     .register_get("hasher_name", StorageMetadata::hasher_name)

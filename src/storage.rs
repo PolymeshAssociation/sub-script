@@ -1,6 +1,8 @@
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use sp_core::storage::StorageKey;
+use frame_support::traits::STORAGE_VERSION_STORAGE_KEY_POSTFIX;
+use frame_support::storage::storage_prefix;
 
 use crate::block::{hash_from_dynamic, BlockHash};
 use crate::client::Client;
@@ -17,17 +19,19 @@ pub struct StorageKeysPaged {
   client: Client,
   md: StorageMetadata,
   prefix: StorageKey,
+  only_last_key: bool,
   count: u32,
   start_key: Option<StorageKey>,
   finished: bool,
 }
 
 impl StorageKeysPaged {
-  fn new(client: &Client, md: &StorageMetadata, prefix: StorageKey) -> Self {
+  fn new(client: &Client, md: &StorageMetadata, prefix: StorageKey, only_last_key: bool) -> Self {
     Self {
       client: client.clone(),
       md: md.clone(),
       prefix,
+      only_last_key,
       count: 100,
       start_key: None,
       finished: false,
@@ -67,7 +71,7 @@ impl StorageKeysPaged {
 
     let result = keys
       .into_iter()
-      .map(|key| self.md.decode_map_key(&self.prefix, &key))
+      .map(|key| self.md.decode_map_key(&self.prefix, &key, self.only_last_key))
       .collect::<Result<Vec<_>, _>>()?;
     Ok(Dynamic::from(result))
   }
@@ -97,7 +101,7 @@ impl StorageKeysPaged {
       .into_iter()
       .zip(&keys)
       .map(|(val, key)| -> Result<Dynamic, Box<EvalAltResult>> {
-        let key = self.md.decode_map_key(&self.prefix, &key)?;
+        let key = self.md.decode_map_key(&self.prefix, &key, self.only_last_key)?;
         let value = match val {
           Some(val) => self.md.decode_value(val.0)?,
           None => Dynamic::UNIT,
@@ -154,6 +158,21 @@ impl Storage {
     }
   }
 
+  fn get_u16_by_key(
+    &self,
+    key: StorageKey,
+    at_block: Option<BlockHash>,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    use parity_scale_codec::Decode;
+    match self.client.get_storage_by_key(key, at_block)? {
+      Some(value) => {
+        let val = u16::decode(&mut value.0.as_slice()).map_err(|e| e.to_string())?;
+        Ok(Dynamic::from_int(val as i64))
+      }
+      None => Ok(Dynamic::UNIT),
+    }
+  }
+
   fn get_by_key(
     &self,
     md: &StorageMetadata,
@@ -204,8 +223,34 @@ impl Storage {
     &self,
     md: &StorageMetadata,
     prefix: StorageKey,
+    only_last_key: bool,
   ) -> Result<StorageKeysPaged, Box<EvalAltResult>> {
-    Ok(StorageKeysPaged::new(&self.client, &md, prefix))
+    Ok(StorageKeysPaged::new(&self.client, &md, prefix, only_last_key))
+  }
+
+  fn get_pallet_version_key(
+    &self,
+    mod_name: &str,
+  ) -> StorageKey {
+    let key = storage_prefix(mod_name.as_bytes(), STORAGE_VERSION_STORAGE_KEY_POSTFIX);
+    StorageKey(key.to_vec())
+  }
+
+  pub fn get_pallet_version(
+    &mut self,
+    mod_name: &str,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let key = self.get_pallet_version_key(mod_name);
+    self.get_u16_by_key(key, None)
+  }
+
+  pub fn get_pallet_version_at_block(
+    &mut self,
+    mod_name: &str,
+    at_block: Dynamic,
+  ) -> Result<Dynamic, Box<EvalAltResult>> {
+    let key = self.get_pallet_version_key(mod_name);
+    self.get_u16_by_key(key, hash_from_dynamic(at_block))
   }
 
   pub fn get_value_at_block(
@@ -271,7 +316,7 @@ impl Storage {
   ) -> Result<StorageKeysPaged, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
     let prefix = md.get_map_prefix()?;
-    self.get_keys_paged(md, prefix)
+    self.get_keys_paged(md, prefix, true)
   }
 
   pub fn get_map_keys_at_block(
@@ -322,8 +367,13 @@ impl Storage {
     key1: Dynamic,
   ) -> Result<StorageKeysPaged, Box<EvalAltResult>> {
     let md = self.metadata.get_storage(mod_name, storage_name)?;
-    let prefix = md.get_double_map_prefix(key1)?;
-    self.get_keys_paged(md, prefix)
+    if key1.is::<()>() {
+      let prefix = md.get_map_prefix()?;
+      self.get_keys_paged(md, prefix, false)
+    } else {
+      let prefix = md.get_double_map_prefix(key1)?;
+      self.get_keys_paged(md, prefix, true)
+    }
   }
 }
 
@@ -333,6 +383,8 @@ pub fn init_engine(engine: &mut Engine, client: &Client, metadata: &Metadata) ->
     .register_fn("new_storage", |client: &mut Client, metadata: Metadata| {
       Storage::new(client.clone(), &metadata)
     })
+    .register_result_fn("pallet_version", Storage::get_pallet_version)
+    .register_result_fn("pallet_version_at_block", Storage::get_pallet_version_at_block)
     .register_result_fn("value", Storage::get_value)
     .register_result_fn("value_at_block", Storage::get_value_at_block)
     .register_result_fn("value_at_blocks", Storage::get_value_at_blocks)
