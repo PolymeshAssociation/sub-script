@@ -299,10 +299,10 @@ fn create_users(names, balance) {
 }
 
 // Create a batch of assets and issuers.
-fn create_asset_batch(prefix, offset, count, supply, disable_iu) {
-	print(`Create Assets: prefix='${prefix}', range=(${offset}..${count}), supply=${supply}, disable_iu=${disable_iu}`);
+fn create_asset_batch(prefix, offset, count, supply) {
+	print(`Create Assets: prefix='${prefix}', range=(${offset}..${count}), supply=${supply}`);
 	let tickers = gen_names(prefix, offset, count);
-	return create_assets(tickers, #{ EquityCommon: () }, supply, disable_iu);
+	return create_assets(tickers, #{ EquityCommon: () }, supply);
 }
 
 // Create a batch of stablecoins and issuers.
@@ -318,7 +318,7 @@ fn tickers_to_issuers(tickers) {
 }
 
 // Create assets.
-fn create_assets(tickers, asset_type, supply, disable_iu) {
+fn create_assets(tickers, asset_type, supply) {
 	let issuers = create_users(tickers_to_issuers(tickers), 100000000.0);
 
 	let results = [];
@@ -326,8 +326,8 @@ fn create_assets(tickers, asset_type, supply, disable_iu) {
 		let issuer = issuers[idx];
 	
 		results += issuer.submit(Utility.batch_optimistic([
-			Asset.create_asset(`token ${ticker}`, ticker, true, asset_type, [], (), disable_iu),
-			Asset.issue(ticker, supply),
+			Asset.create_asset(`token ${ticker}`, ticker, true, asset_type, [], ()),
+			Asset.issue(ticker, supply, #{ Default: () }),
 			Settlement.create_venue("", [], #{ Other: () }),
 			ComplianceManager.pause_asset_compliance(ticker),
 		]));
@@ -401,6 +401,23 @@ fn get_user_venues(user) {
 	return STORAGE.map("Settlement", "UserVenues", did);
 }
 
+// Get Venue signers.
+fn get_venue_signers(venue_id) {
+	let paged = STORAGE.double_paged("Settlement", "VenueSigners", venue_id);
+	paged.set_page_count(500);
+	let signers = [];
+	do {
+		let keys = paged.next_keys();
+		if keys == () {
+			break;
+		}
+		for key in keys {
+			signers += key;
+		}
+	} while paged.has_more;
+	return signers;
+}
+
 // Get signer's receipts used.
 fn get_signer_receipts_used(user) {
 	let paged = STORAGE.double_paged("Settlement", "ReceiptsUsed", user);
@@ -467,28 +484,33 @@ fn setup_asset_fund_users(ticker, from, users, amount) {
 		legs.push(#{
 			from: from_portfolio,
 			to: portfolio,
-			asset: ticker,
-			amount: amount,
+			asset: #{
+				Fungible: [ ticker, amount ],
+			}
 		});
 		sides.push(#{ user: user, portfolio: portfolio });
 
 		if legs.len() == global::MAX_LEGS {
-			let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleOnAffirmation: () }, (), (), legs, [from_portfolio]));
+			let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, [from_portfolio], ()));
 			settlements.push(#{
 				res: res,
-				leg_count: 1,
+				leg_count: legs.len(),
+				venue_user: from,
 				sides: sides,
+				is_manual: true,
 			});
 			sides = [];
 			legs = [];
 		}
 	}
 	if legs.len() > 0 {
-		let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleOnAffirmation: () }, (), (), legs, [from_portfolio]));
+		let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, [from_portfolio], ()));
 		settlements.push(#{
 			res: res,
-			leg_count: 1,
+			leg_count: legs.len(),
+			venue_user: from,
 			sides: sides,
+			is_manual: true,
 		});
 	}
 
@@ -509,15 +531,18 @@ fn create_settlement(exchange, venue_id, orders, sides) {
 		legs.push(#{
 			from: from.portfolio,
 			to: to.portfolio,
-			asset: order.asset,
-			amount: order.amount,
+			asset: #{
+				Fungible: [ order.asset, order.amount ],
+			}
 		});
 	}
-	let res = exchange.submit(Settlement.add_instruction(venue_id, #{ SettleOnAffirmation: () }, (), (), legs));
+	let res = exchange.submit(Settlement.add_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, ()));
 	return #{
 		res: res,
 		leg_count: legs.len(),
 		sides: sides,
+		venue_user: exchange,
+		is_manual: true,
 	};
 }
 
@@ -545,7 +570,7 @@ fn affirm_settlement(settlement) {
 	// Each side affirms the settlement.
 	let leg_count = settlement.leg_count;
 	for side in settlement.sides {
-		results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio], leg_count));
+		results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio]));
 	}
 	return results;
 }
@@ -554,6 +579,34 @@ fn affirm_settlements(settlements) {
 	let results = [];
 	for settlement in settlements {
 		results += affirm_settlement(settlement);
+	}
+	return results;
+}
+
+fn execute_settlement(settlement) {
+	// Wait for settlement to be created and get the instruction_id.
+	let instruction_id = ();
+	for event in settlement.res.events("Settlement.InstructionCreated") {
+		instruction_id = event.args[2];
+	}
+	if instruction_id == () {
+		let reason = settlement.res.result;
+		print(`Failed to create instruction: ${reason}`);
+		return [];
+	}
+
+	// Each side affirms the settlement.
+	return settlement.venue_user.submit(
+		Settlement.execute_manual_instruction(instruction_id, (), settlement.leg_count, 0, 0, ())
+	);
+}
+
+fn execute_settlements(settlements) {
+	let results = [];
+	for settlement in settlements {
+		if settlement.is_manual {
+			results += execute_settlement(settlement);
+		}
 	}
 	return results;
 }

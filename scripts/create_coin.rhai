@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 print("Create stablecoin");
 
@@ -15,7 +15,7 @@ let issuer = USER[`Issuer_${coin}`];
 p::mock_user(issuer, 100000.0);
 
 let res = issuer.submit(Utility.batch_atomic([
-	Asset.create_asset(`Coin ${coin}`, coin, true, #{ StableCoin: () }, [], (), true),
-	Asset.issue(coin, balance),
+	Asset.create_asset(`Coin ${coin}`, coin, true, #{ StableCoin: () }, [], ()),
+	Asset.issue(coin, balance, #{ Default: () }),
 ]));
 print(`res: ${res}`);

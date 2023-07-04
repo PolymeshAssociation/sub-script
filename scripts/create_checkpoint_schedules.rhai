@@ -1,4 +1,4 @@
-import "./scripts/mod/polymesh" as p;
+import "scripts/mod/polymesh" as p;
 
 print("Create assets.");
 
@@ -8,11 +8,6 @@ if prefix == () {
 	print("Need ticker prefix");
 	return;
 }
-if CLIENT.get_transaction_version() >= 3 {
-	print("Old TransferManager rules not supported on this chain.");
-	return;
-}
-
 let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let supply = ARG.shift();
@@ -25,17 +20,27 @@ let res = p::create_asset_batch(prefix, offset, count, supply);
 let issuers = res[0];
 let tickers = res[1];
 
-let tms = [
-	#{ CountTransferManager: 1000 },
-	#{ PercentageTransferManager: 400000 },
-	#{ CountTransferManager: 1001 },
-];
+let now = STORAGE.value("Timestamp", "Now");
+let start = now + 1_000_000_000;
+
+let schedules = 52;
+let spec = #{
+	start: start,
+	period: #{
+		unit: #{ Year: () },
+		amount: 1,
+	},
+	remaining: 0,
+};
+
 let results = [];
 for (ticker, idx) in tickers {
 	let issuer = issuers[idx];
-	for tm in tms {
-		results += issuer.submit(Statistics.add_transfer_manager(ticker, tm));
+	let calls = [];
+	for x in range(0, schedules) {
+		calls += Checkpoint.create_schedule(ticker, spec);
 	}
+	results += issuer.submit(Utility.batch_optimistic(calls));
 }
 p::wait_for_in_block(results);
 

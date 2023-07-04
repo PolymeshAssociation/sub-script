@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 print("Create assets.");
 
@@ -21,7 +21,7 @@ let offset = ARG.shift();
 offset = if offset == () { 0 } else { parse_int(offset) };
 count += offset;
 
-let res = p::create_asset_batch(prefix, offset, count, supply, true);
+let res = p::create_asset_batch(prefix, offset, count, supply);
 let issuers = res[0];
 let tickers = res[1];
 
