@@ -1240,21 +1240,35 @@ impl Types {
           v.variants()
         );
         for var in v.variants() {
-          let mut fields = var
-            .fields()
-            .into_iter()
-            .map(|ty| id_to_ref.get(&ty.ty().id()).cloned())
-            .collect::<Option<Vec<_>>>()
-            .expect("Failed to resolve Enum variant field type");
+          let mut fields = IndexMap::new();
+          let mut is_struct_variant = true;
+          for (idx, f) in var.fields().into_iter().enumerate() {
+            let name = f.name().cloned().unwrap_or_else(|| {
+              // Has unnamed field, use Tuple variant.
+              is_struct_variant = false;
+              format!("unamed_{idx}")
+            });
+            let field_ty = id_to_ref
+              .get(&f.ty().id())
+              .cloned()
+              .expect("Failed to resolve Enum variant field type");
+            fields.insert(name.to_string(), field_ty);
+          }
           if fields.len() == 0 {
             variants.insert_at(var.index(), var.name(), None);
+          } else if is_struct_variant {
+            variants.insert_at(
+              var.index(),
+              var.name(),
+              Some(TypeMeta::Struct(fields).into()),
+            );
           } else if fields.len() == 1 {
-            variants.insert_at(var.index(), var.name(), fields.pop());
+            variants.insert_at(var.index(), var.name(), fields.first().map(|(_, ty)| ty.clone()));
           } else {
             variants.insert_at(
               var.index(),
               var.name(),
-              Some(TypeMeta::Tuple(fields).into()),
+              Some(TypeMeta::Tuple(fields.values().cloned().collect()).into()),
             );
           }
         }
