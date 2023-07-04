@@ -12,7 +12,7 @@ let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let investor_count = count;
 
-let threads = if count > 10 { 10 } else { 1 };
+let threads = if count > 30 { 30 } else { 1 };
 
 // Per-thread counts.
 let per_thread = 2;
@@ -22,6 +22,10 @@ let exchange_count = per_thread;
 
 count /= threads;
 print(`${threads} threads, (users: ${count}, assets: ${asset_count}, coins: ${coin_count}, exchanges: ${exchange_count}) per thread.`);
+
+if threads > 1 {
+	RPC_MANAGER.set_min_connections(40);
+}
 
 let task_code = `
 	import "./scripts/mod/polymesh" as p;
@@ -85,6 +89,11 @@ let task_code = `
 
 	// Affirm settlements.
 	let results = p::affirm_settlements(settlements);
+	p::wait_for_in_block(results);
+	all_results += results;
+
+	// Execute settlements.
+	let results = p::execute_settlements(settlements);
 	p::wait_for_in_block(results);
 	all_results += results;
 

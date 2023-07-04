@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 print(`Create some investors.`);
 let investors = p::create_users_batch("Investor", 0, 2, 1000.0);
@@ -25,7 +25,7 @@ print(`Give the investors ${coin_balance} x ${coin}`);
 p::asset_fund_users(coin, coin_issuer, investors, coin_balance);
 
 let asset_supply = 10000.0 + (asset_balance * investors.len());
-let res = p::create_asset_batch(asset_prefix, 0, 1, asset_supply, true);
+let res = p::create_asset_batch(asset_prefix, 0, 1, asset_supply);
 let asset_issuer = res[0][0];
 let asset = res[1][0];
 

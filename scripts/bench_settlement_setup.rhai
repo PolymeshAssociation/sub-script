@@ -10,7 +10,7 @@ let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let investor_count = count;
 
-let threads = if count > 10 { 10 } else { 1 };
+let threads = if count > 30 { 30 } else { 1 };
 
 let per_thread = 2;
 let asset_count = per_thread * threads;
@@ -32,12 +32,12 @@ let coin_issuers = p::tickers_to_issuers(coin_tickers);
 let exchange_names = p::gen_names(`${prefix}_Exchange`, 0, exchange_count);
 
 print("Create assets.");
-let res = p::create_asset_batch(asset_prefix, 0, asset_count, total_supply, true);
+let res = p::create_asset_batch(asset_prefix, 0, asset_count, total_supply);
 
 print("Create coins.");
 let res = p::create_coin_batch(coin_prefix, 0, coin_count, total_supply);
 
 print(`Create exchange users.`);
-let users = p::create_users(exchange_names, 1000000);
+let users = p::create_users(exchange_names, 1000000.0);
 
 print("Finished");

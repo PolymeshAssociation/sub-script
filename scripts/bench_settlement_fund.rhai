@@ -12,7 +12,7 @@ let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let investor_count = count;
 
-let threads = if count > 10 { 10 } else { 1 };
+let threads = if count > 30 { 30 } else { 1 };
 
 // Per-thread counts.
 let per_thread = 2;
@@ -22,6 +22,10 @@ let exchange_count = per_thread;
 
 count /= threads;
 print(`${threads} threads, (users: ${count}, assets: ${asset_count}, coins: ${coin_count}, exchanges: ${exchange_count}) per thread.`);
+
+if threads > 1 {
+	RPC_MANAGER.set_min_connections(40);
+}
 
 let task_code = `
 	import "./scripts/mod/polymesh" as p;
@@ -50,7 +54,7 @@ let task_code = `
 	let all_results = [];
 
 	let supply = 100000.0;
-	let total_supply = supply * (investor_count * 20);
+	let total_supply = supply * (investor_count * 200);
 
 	print("Gen investors.");
 	let investors = p::create_keys_batch(investor_prefix, investor_offset, investor_count);
@@ -88,6 +92,11 @@ let task_code = `
 
 	print("Affirm all settlements.");
 	let results = p::affirm_settlements(settlements);
+	p::wait_for_in_block(results);
+	all_results += results;
+
+	print("Execute all settlements.");
+	let results = p::execute_settlements(settlements);
 
 	// Pre-create venue.
 	results += p::create_venue(exchange, #{ Other: () });

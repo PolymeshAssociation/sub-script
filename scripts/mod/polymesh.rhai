@@ -398,7 +398,20 @@ fn add_investor_uniqueness_claim(user, ticker) {
 // get a list of the user's venues.
 fn get_user_venues(user) {
 	let did = get_did(user);
-	return STORAGE.map("Settlement", "UserVenues", did);
+	//return STORAGE.map("Settlement", "UserVenues", did);
+	let paged = STORAGE.double_paged("Settlement", "UserVenues", did);
+	paged.set_page_count(500);
+	let venues = [];
+	do {
+		let keys = paged.next_keys();
+		if keys == () {
+			break;
+		}
+		for key in keys {
+			venues += key;
+		}
+	} while paged.has_more;
+	return venues;
 }
 
 // Get Venue signers.
@@ -482,10 +495,11 @@ fn setup_asset_fund_users(ticker, from, users, amount) {
 		let did = get_did(user);
 		let portfolio = #{ did: did, kind: #{ Default: () } };
 		legs.push(#{
-			from: from_portfolio,
-			to: portfolio,
-			asset: #{
-				Fungible: [ ticker, amount ],
+			Fungible: #{
+				sender: from_portfolio,
+				receiver: portfolio,
+				ticker: ticker,
+				amount: amount,
 			}
 		});
 		sides.push(#{ user: user, portfolio: portfolio });
@@ -529,10 +543,11 @@ fn create_settlement(exchange, venue_id, orders, sides) {
 		let from = sides[order.from];
 		let to = sides[order.to];
 		legs.push(#{
-			from: from.portfolio,
-			to: to.portfolio,
-			asset: #{
-				Fungible: [ order.asset, order.amount ],
+			Fungible: #{
+				sender: from.portfolio,
+				receiver: to.portfolio,
+				ticker: order.asset,
+				amount: order.amount,
 			}
 		});
 	}
