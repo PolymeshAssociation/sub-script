@@ -14,7 +14,7 @@
     "origin": "PalletsOrigin"
   },
   "Releases": {
-    "_enum": ["V1", "V2"]
+    "_enum": ["V1", "V2", "V3", "V4", "V5", "V6", "V6_0_1", "V7"]
   },
   "CallOrHashOf<T>": "MaybeHashed<Call, Hash>",
   "MaybeHashed<Call, Hash>": {

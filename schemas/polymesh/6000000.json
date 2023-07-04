@@ -562,16 +562,6 @@
       "max_ticker_length": "u8",
       "registration_length": "Option<Moment>"
     },
-    "ClassicTickerRegistration": {
-      "eth_owner": "EthereumAddress",
-      "is_created": "bool"
-    },
-    "ClassicTickerImport": {
-      "eth_owner": "EthereumAddress",
-      "ticker": "Ticker",
-      "is_contract": "bool",
-      "is_created": "bool"
-    },
     "EthereumAddress": "[u8; 20]",
     "EcdsaSignature": "[u8; 65]",
     "MotionTitle": "Text",
@@ -983,12 +973,6 @@
       "trade_date": "Option<Moment>",
       "value_date": "Option<Moment>"
     },
-    "Leg": {
-      "from": "PortfolioId",
-      "to": "PortfolioId",
-      "asset": "Ticker",
-      "amount": "Balance"
-    },
     "Venue": {
       "creator": "IdentityId",
       "venue_type": "VenueType"
@@ -1145,6 +1129,12 @@
       "intended_count": "u32",
       "running_count": "u32"
     },
+    "canTransferGranularReturn": {
+      "_enum": {
+        "Ok": "GranularCanTransferResult",
+        "Err": "DispatchError"
+      }
+    },
     "GranularCanTransferResult": {
       "invalid_granularity": "bool",
       "self_transfer": "bool",
@@ -1201,16 +1191,33 @@
       "ticker": "Ticker",
       "amount": "Balance"
     },
-    "LegAsset": {
-      "_enum": {
-        "Fungible": "FungibleToken",
-        "NonFungible": "NFTs"
-      }
+    "OffChainAsset": {
+      "ticker": "Ticker",
+      "amount": "Balance"
     },
-    "LegV2": {
-      "from": "PortfolioId",
-      "to": "PortfolioId",
-      "asset": "LegAsset"
+    "FungibleLeg": {
+      "sender": "PortfolioId",
+      "receiver": "PortfolioId",
+      "ticker": "Ticker",
+      "amount": "Balance"
+    },
+    "NonFungibleLeg": {
+      "sender": "PortfolioId",
+      "receiver": "PortfolioId",
+      "nfts": "NFTs"
+    },
+    "OffChainLeg": {
+      "sender_identity": "IdentityId",
+      "receiver_identity": "IdentityId",
+      "ticker": "Ticker",
+      "amount": "Balance"
+    },
+    "Leg": {
+      "_enum": {
+        "Fungible": "FungibleLeg",
+        "NonFungible": "NonFungibleLeg",
+        "OffChain": "OffChainLeg"
+      }
     },
     "FundDescription": {
       "_enum": {
@@ -1241,34 +1248,6 @@
     "BTreeSet<PortfolioId>": "Vec<PortfolioId>"
   },
   "rpc": {
-    "compliance": {
-      "canTransfer": {
-        "description": "Checks whether a transaction with given parameters is compliant to the compliance manager conditions",
-        "params": [
-          {
-            "name": "ticker",
-            "type": "Ticker",
-            "isOptional": false
-          },
-          {
-            "name": "from_did",
-            "type": "Option<IdentityId>",
-            "isOptional": false
-          },
-          {
-            "name": "to_did",
-            "type": "Option<IdentityId>",
-            "isOptional": false
-          },
-          {
-            "name": "blockHash",
-            "type": "Hash",
-            "isOptional": true
-          }
-        ],
-        "type": "AssetComplianceResult"
-      }
-    },
     "identity": {
       "isIdentityHasValidCdd": {
         "description": "use to tell whether the given did has valid cdd claim or not",
@@ -1380,6 +1359,27 @@
           }
         ],
         "type": "Option<KeyIdentityData>"
+      },
+      "validCDDClaims": {
+        "description": "Returns all valid IdentityClaim of type CustomerDueDiligence for the given target_identity",
+        "params": [
+          {
+            "name": "target_identity",
+            "type": "IdentityId",
+            "isOptional": false
+          },
+          {
+            "name": "cdd_checker_leeway",
+            "type": "u64",
+            "isOptional": true
+          },
+          {
+            "name": "blockHash",
+            "type": "Hash",
+            "isOptional": true
+          }
+        ],
+        "type": "Vec<IdentityClaim>"
       }
     },
     "pips": {
@@ -1464,52 +1464,6 @@
       }
     },
     "asset": {
-      "canTransfer": {
-        "description": "Checks whether a transaction with given parameters can take place or not",
-        "params": [
-          {
-            "name": "sender",
-            "type": "AccountId",
-            "isOptional": false
-          },
-          {
-            "name": "from_custodian",
-            "type": "Option<IdentityId>",
-            "isOptional": false
-          },
-          {
-            "name": "from_portfolio",
-            "type": "PortfolioId",
-            "isOptional": false
-          },
-          {
-            "name": "to_custodian",
-            "type": "Option<IdentityId>",
-            "isOptional": false
-          },
-          {
-            "name": "to_portfolio",
-            "type": "PortfolioId",
-            "isOptional": false
-          },
-          {
-            "name": "ticker",
-            "type": "Ticker",
-            "isOptional": false
-          },
-          {
-            "name": "value",
-            "type": "Balance",
-            "isOptional": false
-          },
-          {
-            "name": "blockHash",
-            "type": "Hash",
-            "isOptional": true
-          }
-        ],
-        "type": "CanTransferResult"
-      },
       "canTransferGranular": {
         "description": "Checks whether a transaction with given parameters can take place or not. The result is granular meaning each check is run and returned regardless of outcome.",
         "params": [
@@ -1549,7 +1503,7 @@
             "isOptional": true
           }
         ],
-        "type": "GranularCanTransferResult"
+        "type": "canTransferGranularReturn"
       }
     },
     "group": {
@@ -1574,6 +1528,34 @@
           }
         ],
         "type": "Vec<Member>"
+      }
+    },
+    "nft": {
+      "validateNFTTransfer": {
+        "description": "Verifies if and the sender and receiver are not the same, if both have valid balances, if the sender owns the nft, and if all compliance rules are being respected.",
+        "params": [
+          {
+            "name": "sender_portfolio",
+            "type": "PortfolioId",
+            "isOptional": false
+          },
+          {
+            "name": "receiver_portfolio",
+            "type": "PortfolioId",
+            "isOptional": false
+          },
+          {
+            "name": "nfts",
+            "type": "NFTs",
+            "isOptional": false
+          },
+          {
+            "name": "blockHash",
+            "type": "Hash",
+            "isOptional": true
+          }
+        ],
+        "type": "DispatchResult"
       }
     }
   },
