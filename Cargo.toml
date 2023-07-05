@@ -95,7 +95,7 @@ rand = { version = "0.8", optional = true, features = ["getrandom", "alloc"], de
 curve25519-dalek = { package = "curve25519-dalek-ng", optional = true, version = "4", default-features = false, features = ["nightly", "alloc"] }
 
 [features]
-default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p" ]
+default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p", "utils" ]
 
 # Enable support for very old Polymesh version.
 polymesh_v2 = [
@@ -113,6 +113,9 @@ ledger = [
 	"ledger-transport-hid",
 	"ledger-apdu",
 ]
+
+# Utils plugin.
+utils = []
 
 # Faster Elgamal decryption.
 rayon = ["confidential_identity_core/rayon"]

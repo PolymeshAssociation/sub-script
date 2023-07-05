@@ -6,6 +6,7 @@ use crate::client::Client;
 use crate::rpc::RpcHandler;
 use crate::types::TypesRegistry;
 
+#[cfg(feature = "ledger")]
 pub mod ledger;
 
 #[cfg(feature = "mercat")]
@@ -17,7 +18,11 @@ pub mod polymesh;
 #[cfg(feature = "pg")]
 pub mod postgres;
 
+#[cfg(feature = "utils")]
+pub mod utils;
+
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
+  #[cfg(feature = "ledger")]
   ledger::init_types_registry(types_registry)?;
 
   #[cfg(feature = "polymesh")]
@@ -35,6 +40,7 @@ pub fn init_engine(
   globals: &mut HashMap<String, Dynamic>,
   client: &Client,
 ) -> Result<(), Box<EvalAltResult>> {
+  #[cfg(feature = "ledger")]
   ledger::init_engine(engine, globals, client)?;
 
   #[cfg(feature = "polymesh")]
@@ -45,6 +51,9 @@ pub fn init_engine(
 
   #[cfg(feature = "pg")]
   postgres::init_engine(engine, globals)?;
+
+  #[cfg(feature = "utils")]
+  utils::init_engine(engine, globals)?;
 
   Ok(())
 }
