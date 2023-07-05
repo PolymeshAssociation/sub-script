@@ -321,12 +321,16 @@ fn tickers_to_issuers(tickers) {
 fn create_assets(tickers, asset_type, supply) {
 	let issuers = create_users(tickers_to_issuers(tickers), 100000000.0);
 
+	let stat_types = [
+		#{ op: #{ Count: () }, claim_issuer: () },
+	];
 	let results = [];
 	for (ticker, idx) in tickers {
 		let issuer = issuers[idx];
 	
 		results += issuer.submit(Utility.batch_optimistic([
 			Asset.create_asset(`token ${ticker}`, ticker, true, asset_type, [], ()),
+			Statistics.set_active_asset_stats(#{ Ticker: ticker }, stat_types),
 			Asset.issue(ticker, supply, #{ Default: () }),
 			Settlement.create_venue("", [], #{ Other: () }),
 			ComplianceManager.pause_asset_compliance(ticker),
