@@ -413,6 +413,7 @@ dependencies = [
 [[package]]
 name = "confidential_identity_core"
 version = "1.1.2"
+source = "git+https://github.com/PolymeshAssociation/cryptography?branch=mercat_polymesh_v6.0#c7797a1536cf4965bee8781a305e9856d9cb1a80"
 dependencies = [
  "bincode",
  "blake2",
@@ -437,6 +438,7 @@ dependencies = [
 [[package]]
 name = "confidential_identity_v1"
 version = "1.1.2"
+source = "git+https://github.com/PolymeshAssociation/cryptography?branch=mercat_polymesh_v6.0#c7797a1536cf4965bee8781a305e9856d9cb1a80"
 dependencies = [
  "blake2",
  "byteorder",
@@ -1932,6 +1934,7 @@ checksum = "8452105ba047068f40ff7093dd1d9da90898e63dd61736462e9cdda6a90ad3c3"
 [[package]]
 name = "mercat"
 version = "1.1.2"
+source = "git+https://github.com/PolymeshAssociation/cryptography?branch=mercat_polymesh_v6.0#c7797a1536cf4965bee8781a305e9856d9cb1a80"
 dependencies = [
  "byteorder",
  "confidential_identity_core",
@@ -1950,6 +1953,7 @@ dependencies = [
 [[package]]
 name = "mercat-common"
 version = "1.1.0"
+source = "git+https://github.com/PolymeshAssociation/cryptography?branch=mercat_polymesh_v6.0#c7797a1536cf4965bee8781a305e9856d9cb1a80"
 dependencies = [
  "confidential_identity_core",
  "curve25519-dalek-ng",
@@ -3661,7 +3665,7 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "5.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#020f51af1d993a0fd4dbec2f6399d9c649915bb8"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 
 [[package]]
 name = "sp-storage"
@@ -4231,9 +4235,9 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "digest 0.10.3",
- "rand 0.7.3",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
