@@ -1218,7 +1218,13 @@ impl Types {
             .get(&f.ty().id())
             .cloned()
             .expect("Failed to resolve Composite field type");
-          fields.insert(name.to_string(), field_ty);
+          let type_ref = f.type_name().and_then(|ty_name| self.parse_type(ty_name).ok());
+          if let Some(type_ref) = type_ref {
+            log::trace!(" -- Field[{name}]: use type_name={}", f.type_name().unwrap());
+            fields.insert(name.to_string(), type_ref);
+          } else {
+            fields.insert(name.to_string(), field_ty);
+          }
         }
         TypeMeta::Struct(fields)
       }
