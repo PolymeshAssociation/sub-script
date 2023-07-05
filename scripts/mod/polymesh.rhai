@@ -385,14 +385,17 @@ fn validate_investor_uniqueness_claim(target, claim, proof) {
 	return is_valid;
 }
 
-fn add_investor_uniqueness_claim(user, ticker) {
-	print("add_investor_uniqueness_claim");
+fn add_investor_uniqueness_claim(user, ticker, uid) {
+	let did = get_did(user);
+	if uid == () {
+		uid = PolymeshUtils.did_to_uid(did);
+	}
 	// Create investor uniqueness claim & proof.
-	let claim = PolymeshUtils.create_investor_uniqueness(user, "ACME");
+	let claim = PolymeshUtils.create_investor_uniqueness(did, ticker, uid);
 	print(`claim = ${claim}`);
 	
 	// Add Investor Uniqueness claim.
-	return user.submit(Identity.add_investor_uniqueness_claim(user, claim[0], claim[1], ()));
+	return user.submit(Identity.add_investor_uniqueness_claim(did, claim[0], claim[1], ()));
 }
 
 // get a list of the user's venues.

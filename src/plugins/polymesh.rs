@@ -40,11 +40,21 @@ impl PolymeshUtils {
     Ok(Self {})
   }
 
-  pub fn make_cdd_claim(did: &mut IdentityId) -> Claim {
+  pub fn did_to_uid(&mut self, did: IdentityId) -> InvestorUid {
+    InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
+      did.as_bytes(),
+    ))
+  }
+
+  pub fn make_cdd_claim(&mut self, did: IdentityId) -> Claim {
     let uid = InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
       did.as_bytes(),
     ));
-    let cdd_id = CddId::new_v1(*did, uid);
+    self.make_cdd_claim_uid(did, uid)
+  }
+
+  pub fn make_cdd_claim_uid(&mut self, did: IdentityId, uid: InvestorUid) -> Claim {
+    let cdd_id = CddId::new_v1(did, uid);
     Claim::CustomerDueDiligence(cdd_id)
   }
 
@@ -52,10 +62,8 @@ impl PolymeshUtils {
     &mut self,
     did: IdentityId,
     ticker: &str,
+    uid: InvestorUid,
   ) -> Result<Vec<Dynamic>, Box<EvalAltResult>> {
-    let uid = InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
-      did.as_bytes(),
-    ));
     let ticker = str_to_ticker(ticker)?;
 
     let proof = v1::InvestorZKProofData::new(&did, &uid, &ticker);
@@ -184,7 +192,9 @@ pub fn init_engine(
       "validate_investor_uniqueness",
       PolymeshUtils::validate_investor_uniqueness,
     )
+    .register_fn("did_to_uid", PolymeshUtils::did_to_uid)
     .register_fn("make_cdd_claim", PolymeshUtils::make_cdd_claim)
+    .register_fn("make_cdd_claim_uid", PolymeshUtils::make_cdd_claim_uid)
     .register_type_with_name::<Claim>("Claim")
     .register_type_with_name::<v1::InvestorZKProofData>("InvestorZKProofData")
     .register_type_with_name::<IdentityId>("IdentityId")
