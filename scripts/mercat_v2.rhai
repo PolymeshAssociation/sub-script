@@ -123,7 +123,7 @@ results += investor.acc.submit(ConfidentialAsset.validate_mercat_account(ticker,
 mediator.create_mercat_mediator();
 results += mediator.acc.submit(ConfidentialAsset.add_mediator_mercat_account(mediator.mediator.acc));
 
-let mint_amount = 10_000_000.0;
+let mint_amount = 9_000_000.0;
 results += issuer.tx_mint_asset(ticker, mint_amount);
 
 //
@@ -133,6 +133,11 @@ results += issuer.tx_mint_asset(ticker, mint_amount);
 fn create_tx_state(issuer, investor, mediator, ticker) {
 	// Setup venue.
 	let venue_id = mediator.create_venue();
+	// Asset issuer allow venue.
+	let res = issuer.acc.submit(ConfidentialAsset.allow_venues(ticker, [venue_id]));
+	if !res.is_in_block {
+		print(`Failed to allow venue: ${res}`);
+	}
 	return #{
 		venue_id: venue_id,
 		issuer: issuer,
@@ -159,6 +164,9 @@ fn transfer_tokens(amount) {
 		transaction_id = event.args[2];
 	}
 	print(`transaction_id = ${transaction_id}`);
+	if transaction_id == () {
+		print(`Failed to create transaction: ${res}`);
+	}
 
 	let results = [];
 
