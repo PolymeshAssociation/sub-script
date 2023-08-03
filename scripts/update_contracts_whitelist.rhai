@@ -33,7 +33,28 @@ for mod in metadata.modules {
 // Use Alice for sudo.
 let alice = USER.Alice;
 
-let whitelist = ["Asset.accept_asset_ownership_transfer", "Asset.accept_ticker_transfer", "Asset.create_asset", "Asset.issue", "Asset.redeem", "Asset.register_custom_asset_type", "Asset.register_ticker", "ComplianceManager.pause_asset_compliance", "PolymeshContracts.instantiate_with_hash_perms", "Portfolio.accept_portfolio_custody", "Portfolio.create_portfolio", "Portfolio.move_portfolio_funds", "Portfolio.quit_portfolio_custody", "Settlement.add_and_affirm_instruction", "Settlement.create_venue", "Settlement.execute_manual_instruction", "System.remark", "System.remark_with_event"];
+let whitelist = [
+	"Asset.accept_asset_ownership_transfer",
+	"Asset.accept_ticker_transfer",
+	"Asset.create_asset",
+	"Asset.issue",
+	"Asset.redeem",
+	"Asset.register_custom_asset_type",
+	"Asset.register_ticker",
+	"ComplianceManager.pause_asset_compliance",
+	"CapitalDistribution.claim",
+	"CorporateAction.initiate_corporate_action_and_distribute",
+	"PolymeshContracts.instantiate_with_hash_perms",
+	"Portfolio.accept_portfolio_custody",
+	"Portfolio.create_portfolio",
+	"Portfolio.move_portfolio_funds",
+	"Portfolio.quit_portfolio_custody",
+	"Settlement.add_and_affirm_instruction",
+	"Settlement.create_venue",
+	"Settlement.execute_manual_instruction",
+	"System.remark",
+	"System.remark_with_event",
+];
 
 let updates = [];
 for name in whitelist {
