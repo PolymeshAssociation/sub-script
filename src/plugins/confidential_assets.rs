@@ -200,7 +200,7 @@ pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
     init_vec_encoded::<CipherText>("confidential_assets::CipherText", types)?;
-    init_vec_encoded::<ConfidentialTransferProof>("confidential_assets::ConfidentialTransferProof", types)?;
+    init_vec_encoded::<ConfidentialTransferProof>("pallet_confidential_asset::SenderProof", types)?;
     // Don't use vec wrapper for `MercatAccount` or `CipherText`.
     types.custom_encode(
       "pallet_confidential_asset::MercatAccount",
@@ -271,7 +271,7 @@ pub fn init_engine(
     .register_fn("add_balance", ConfidentialAssetsUtils::add_balance)
     .register_fn("sub_balance", ConfidentialAssetsUtils::sub_balance)
     .register_type_with_name::<ElgamalKeys>("ElgamalKeys")
-    .register_get("public", |v: &mut ElgamalKeys| v.public)
+    .register_get("pub_key", |v: &mut ElgamalKeys| v.public)
     .register_type_with_name::<ElgamalPublicKey>("ElgamalPublicKey")
     .register_result_fn("encrypt_amount", |k: &mut ElgamalPublicKey, amount: Dynamic| {
       let amount = to_balance(amount)?;
