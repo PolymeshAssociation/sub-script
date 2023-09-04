@@ -12,6 +12,9 @@ pub mod ledger;
 #[cfg(feature = "mercat")]
 pub mod mercat;
 
+#[cfg(feature = "confidential_assets")]
+pub mod confidential_assets;
+
 #[cfg(feature = "polymesh")]
 pub mod polymesh;
 
@@ -31,6 +34,9 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
   #[cfg(feature = "mercat")]
   mercat::init_types_registry(types_registry)?;
 
+  #[cfg(feature = "confidential_assets")]
+  confidential_assets::init_types_registry(types_registry)?;
+
   Ok(())
 }
 
@@ -48,6 +54,9 @@ pub fn init_engine(
 
   #[cfg(feature = "mercat")]
   mercat::init_engine(_rpc, engine, globals, client)?;
+
+  #[cfg(feature = "confidential_assets")]
+  confidential_assets::init_engine(_rpc, engine, globals, client)?;
 
   #[cfg(feature = "pg")]
   postgres::init_engine(engine, globals)?;

@@ -4,8 +4,11 @@ use std::collections::HashMap;
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
 use polymesh_primitives::{
-  investor_zkproof_data::v1, valid_proof_of_investor, CddId, Claim, IdentityId, InvestorUid, Scope,
-  Ticker,
+  Claim, IdentityId, Ticker,
+};
+#[cfg(feature = "confidential_identity")]
+use polymesh_primitives::{
+  investor_zkproof_data::v1, valid_proof_of_investor, CddId, InvestorUid, Scope,
 };
 
 use parity_scale_codec::Decode;
@@ -40,12 +43,14 @@ impl PolymeshUtils {
     Ok(Self {})
   }
 
+  #[cfg(feature = "confidential_identity")]
   pub fn did_to_uid(&mut self, did: IdentityId) -> InvestorUid {
     InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
       did.as_bytes(),
     ))
   }
 
+  #[cfg(feature = "confidential_identity")]
   pub fn make_cdd_claim(&mut self, did: IdentityId) -> Claim {
     let uid = InvestorUid::from(confidential_identity_v1::mocked::make_investor_uid(
       did.as_bytes(),
@@ -53,11 +58,13 @@ impl PolymeshUtils {
     self.make_cdd_claim_uid(did, uid)
   }
 
+  #[cfg(feature = "confidential_identity")]
   pub fn make_cdd_claim_uid(&mut self, did: IdentityId, uid: InvestorUid) -> Claim {
     let cdd_id = CddId::new_v1(did, uid);
     Claim::CustomerDueDiligence(cdd_id)
   }
 
+  #[cfg(feature = "confidential_identity")]
   pub fn create_investor_uniqueness(
     &mut self,
     did: IdentityId,
@@ -75,6 +82,7 @@ impl PolymeshUtils {
     Ok(vec![Dynamic::from(claim), Dynamic::from(proof)])
   }
 
+  #[cfg(feature = "confidential_identity")]
   pub fn validate_investor_uniqueness(
     &mut self,
     target: IdentityId,
@@ -143,6 +151,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     types.custom_decode("Claim", |mut input, _is_compact| {
       Ok(Dynamic::from(Claim::decode(&mut input)?))
     })?;
+    #[cfg(feature = "confidential_identity")]
     types.custom_encode(
       "InvestorZKProofData",
       TypeId::of::<v1::InvestorZKProofData>(),
@@ -151,6 +160,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
         Ok(())
       },
     )?;
+    #[cfg(feature = "confidential_identity")]
     types.custom_decode("InvestorZKProofData", |mut input, _is_compact| {
       Ok(Dynamic::from(v1::InvestorZKProofData::decode(&mut input)?))
     })?;
@@ -184,30 +194,35 @@ pub fn init_engine(
 ) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<PolymeshUtils>("PolymeshUtils")
-    .register_result_fn(
-      "create_investor_uniqueness",
-      PolymeshUtils::create_investor_uniqueness,
-    )
-    .register_result_fn(
-      "validate_investor_uniqueness",
-      PolymeshUtils::validate_investor_uniqueness,
-    )
-    .register_fn("did_to_uid", PolymeshUtils::did_to_uid)
-    .register_fn("make_cdd_claim", PolymeshUtils::make_cdd_claim)
-    .register_fn("make_cdd_claim_uid", PolymeshUtils::make_cdd_claim_uid)
     .register_type_with_name::<Claim>("Claim")
-    .register_type_with_name::<v1::InvestorZKProofData>("InvestorZKProofData")
     .register_type_with_name::<IdentityId>("IdentityId")
     .register_fn("==", |v1: IdentityId, v2: IdentityId| v1 == v2)
     .register_fn("!=", |v1: IdentityId, v2: IdentityId| v1 != v2)
     .register_fn("to_string", |did: &mut IdentityId| format!("{:?}", did))
-    .register_type_with_name::<InvestorUid>("InvestorUid")
-    .register_fn("to_string", |uid: &mut InvestorUid| format!("{:?}", uid))
     .register_type_with_name::<Ticker>("Ticker")
     .register_fn("to_string", |ticker: &mut Ticker| {
       let s = String::from_utf8_lossy(ticker.as_slice());
       format!("{}", s)
     });
+
+  #[cfg(feature = "confidential_identity")]
+  {
+    engine
+      .register_result_fn(
+        "create_investor_uniqueness",
+        PolymeshUtils::create_investor_uniqueness,
+      )
+      .register_result_fn(
+        "validate_investor_uniqueness",
+        PolymeshUtils::validate_investor_uniqueness,
+      )
+      .register_fn("did_to_uid", PolymeshUtils::did_to_uid)
+      .register_fn("make_cdd_claim", PolymeshUtils::make_cdd_claim)
+      .register_fn("make_cdd_claim_uid", PolymeshUtils::make_cdd_claim_uid)
+      .register_type_with_name::<v1::InvestorZKProofData>("InvestorZKProofData")
+      .register_type_with_name::<InvestorUid>("InvestorUid")
+      .register_fn("to_string", |uid: &mut InvestorUid| format!("{:?}", uid));
+  }
 
   let utils = PolymeshUtils::new()?;
   globals.insert("PolymeshUtils".into(), Dynamic::from(utils.clone()));

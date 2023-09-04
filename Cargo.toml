@@ -24,16 +24,14 @@ sp-runtime-interface = { git = "https://github.com/PolymeshAssociation/substrate
 polymesh-primitives = { git = "https://github.com/PolymeshAssociation/Polymesh", branch = "develop" }
 
 bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "polymesh" }
-#mercat = { path = "../cryptography/mercat" }
-#mercat-common = { path = "../cryptography/mercat/cli/common/" }
-#confidential_identity_core = { path = "../cryptography/confidential-identity-core" }
-#confidential_identity_v1 = { path = "../cryptography/confidential-identity-v1" }
-#confidential_identity_v2 = { path = "../cryptography/confidential-identity-v2" }
+
+confidential_assets = { git = "ssh://git@github.com/PolymeshAssociation/confidential_assets.git", branch = "main" }
+
+# Old MERCAT and confidential identity.
 mercat = { version = "1.1.0", git = "https://github.com/PolymeshAssociation/cryptography", branch = "mercat_polymesh_v6.0" }
 mercat-common = { version = "1.1.0", git = "https://github.com/PolymeshAssociation/cryptography", branch = "mercat_polymesh_v6.0" }
 confidential_identity_core = { version = "1.1", git = "https://github.com/PolymeshAssociation/cryptography", branch = "mercat_polymesh_v6.0" }
 confidential_identity_v1 = { version = "1.1", git = "https://github.com/PolymeshAssociation/cryptography", branch = "mercat_polymesh_v6.0" }
-#confidential_identity_v2 = { version = "2.1", git = "https://github.com/PolymeshAssociation/cryptography", branch = "mercat_polymesh_v6.0" }
 
 [dependencies]
 anyhow = "1.0.44"
@@ -57,7 +55,7 @@ frame-support = { version = "4.0.0-dev", default-features = false }
 frame-metadata = { version = "15.0.0", default-features = false, features = ["std"] }
 parity-scale-codec = "3.0"
 
-scale-info = { version = "2.0", default-features = false, optional = true }
+scale-info = { version = "=2.4.0", default-features = false, optional = true }
 
 # rhai
 rhai = { version = "=1.6.1", default-features = false, features = ["sync", "only_i64", "no_float", "decimal", "serde", "metadata"]}
@@ -90,6 +88,9 @@ mercat = { version = "1.1", default-features = false, optional = true }
 mercat-common = { version = "1.1", optional = true }
 base64 = { version = "0.12.1", optional = true }
 
+# Confidential Assets
+confidential_assets = { version = "1.0.0", default-features = false, optional = true }
+
 # Crypto
 rand = { version = "0.8", optional = true, features = ["getrandom", "alloc"], default-features = false }
 curve25519-dalek = { package = "curve25519-dalek-ng", optional = true, version = "4", default-features = false, features = ["nightly", "alloc"] }
@@ -104,9 +105,9 @@ polymesh_v2 = [
 
 libp2p = [ "bs58", "libp2p-core" ]
 
-v12 = ["frame-metadata/v12"]
-v13 = ["frame-metadata/v13"]
-v14 = ["frame-metadata/v14", "scale-info"]
+v12 = [ "frame-metadata/v12" ]
+v13 = [ "frame-metadata/v13" ]
+v14 = [ "frame-metadata/v14", "scale-info" ]
 
 # Ledger
 ledger = [
@@ -117,19 +118,34 @@ ledger = [
 # Utils plugin.
 utils = []
 
-# Faster Elgamal decryption.
-rayon = ["confidential_identity_core/rayon"]
-discrete_log = ["confidential_identity_core/discrete_log"]
-
-# Polymesh
-polymesh = [
-	"confidential_identity_v1",
-	"polymesh-primitives",
+# Old Confidential identity (Investor uniqueness).
+confidential_identity = [
 	"confidential_identity_core",
-	"mercat",
+	"confidential_identity_v1",
+]
+
+# Old Mercat suport.
+mercat = [
+	"dep:mercat",
 	"mercat/std",
 	"mercat/balance_64",
 	"mercat-common",
+	"confidential_identity_core",
+]
+
+# Faster Elgamal decryption.
+rayon = [
+	"confidential_identity_core?/rayon",
+	"confidential_assets?/rayon",
+]
+discrete_log = [
+	"confidential_identity_core?/discrete_log",
+	"confidential_assets?/discrete_log",
+]
+
+# Polymesh
+polymesh = [
+	"polymesh-primitives",
 	"curve25519-dalek",
 	"base64",
 	"rand",
@@ -143,17 +159,19 @@ pg = [
 ]
 
 no_std = [
-	"confidential_identity_core/no_std",
-	"confidential_identity_v1/no_std",
+	"confidential_identity_core?/no_std",
+	"confidential_identity_v1?/no_std",
+	"confidential_assets?/no_std",
 	"polymesh-primitives/no_std",
 	"polymesh-primitives/u64_backend",
 ]
 
 std = [
-	"confidential_identity_core/std",
+	"confidential_identity_core?/std",
+	"confidential_identity_v1?/std",
+	"confidential_assets?/std",
 	"rayon",
 	"discrete_log",
-	"confidential_identity_v1/std",
 	"polymesh-primitives/std",
 	"polymesh-primitives/u64_backend",
 ]

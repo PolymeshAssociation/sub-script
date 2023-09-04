@@ -20,6 +20,7 @@ let end_block = start_block + count;
 
 fn download_runtime(rt, hash) {
 	let filename = `./runtimes/${rt.specName}/${rt.specVersion}.wasm`;
+	// Runtime code storage at `:code`.
 	let runtime = RPC.call_method("state_getStorage",["0x3a636f6465", hash]);
 	print(`-- write runtime: ${filename}`);
 	Utils.write_hex_to_file(filename, runtime);
