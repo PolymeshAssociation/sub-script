@@ -1782,7 +1782,7 @@ impl EncodedCall {
   }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EncodedArgs {
   data: Vec<u8>,
   compact: bool,

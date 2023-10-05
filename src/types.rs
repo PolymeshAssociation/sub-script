@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
@@ -366,6 +366,10 @@ pub enum TypeMeta {
   /// (ok, err)
   Result(TypeRef, TypeRef),
   Vector(TypeRef),
+
+  BTreeSet(TypeRef),
+  BTreeMap(TypeRef, TypeRef),
+
   /// Fixed length.
   Slice(usize, TypeRef),
   String,
@@ -555,6 +559,49 @@ impl TypeMeta {
           data.encode(bytes);
         } else {
           Err(format!("Expected a vector, got {:?}", value.type_id()))?;
+        }
+      }
+      TypeMeta::BTreeSet(type_ref) => {
+        if value.is::<Array>() {
+          let values = value.cast::<Array>();
+          // Build BTreeSet from values.
+          let mut set = BTreeSet::new();
+          for value in values.into_iter() {
+            set.insert(type_ref.encode(value)?);
+          }
+          data.encode(set);
+        } else {
+          Err(format!("Expected an array, got {:?}", value.type_id()))?;
+        }
+      }
+      TypeMeta::BTreeMap(key_ty, value_ty) => {
+        if value.is::<Array>() {
+          let values = value.cast::<Array>();
+          // Build BTreeMap from values.
+          let mut map = BTreeMap::new();
+          for value in values.into_iter() {
+            if value.is::<Array>() {
+              let mut pair = value.cast::<Array>();
+              let len = pair.len();
+              let value = pair.pop();
+              let key = pair.pop();
+              match (key, value, len) {
+                (Some(key), Some(value), 2) => {
+                  let key = key_ty.encode(key)?;
+                  let value = value_ty.encode(value)?;
+                  map.insert(key, value);
+                }
+                (_, _, len) => {
+                  Err(format!("Expected array of length 2, got length {:?}", len))?;
+                }
+              }
+            } else {
+              Err(format!("Expected array of 2 values, got {:?}", value.type_id()))?;
+            }
+          }
+          data.encode(map);
+        } else {
+          Err(format!("Expected an array of (key, value) pairs, got {:?}", value.type_id()))?;
         }
       }
       TypeMeta::Slice(len, type_ref) => {
@@ -782,7 +829,25 @@ impl TypeMeta {
         for _ in 0..len {
           vec.push(type_ref.decode_value(input, false)?);
         }
-        Dynamic::from(vec)
+        Dynamic::from_array(vec)
+      }
+      TypeMeta::BTreeSet(type_ref) => {
+        let len = Compact::<u64>::decode(input)?.0;
+        let mut vec = Vec::new();
+        for _ in 0..len {
+          vec.push(type_ref.decode_value(input, false)?);
+        }
+        Dynamic::from_array(vec)
+      }
+      TypeMeta::BTreeMap(key_ty, value_ty) => {
+        let len = Compact::<u64>::decode(input)?.0;
+        let mut vec = Vec::new();
+        for _ in 0..len {
+          let key = key_ty.decode_value(input, false)?;
+          let value = value_ty.decode_value(input, false)?;
+          vec.push(Dynamic::from_array(vec![key, value]));
+        }
+        Dynamic::from_array(vec)
       }
       TypeMeta::Slice(len, type_ref) => {
         let mut vec = Vec::with_capacity(*len as usize);
@@ -1191,6 +1256,27 @@ impl Types {
     let type_ref = id_to_ref.get(&id).unwrap();
     log::debug!("import_v14_type: {}", ty.path());
     let type_meta = match ty.type_def() {
+      TypeDef::Composite(_) if ty.path().segments() == &["BTreeSet"] => {
+        let ty_param = &ty.type_params()[0];
+        let elm_ty = id_to_ref
+          .get(&ty_param.ty().expect("TypeParameter id").id())
+          .cloned()
+          .expect("Failed to resolve BTreeSet type_param");
+        TypeMeta::BTreeSet(elm_ty)
+      }
+      TypeDef::Composite(_) if ty.path().segments() == &["BTreeMap"] => {
+        let ty_param = &ty.type_params()[0];
+        let key_ty = id_to_ref
+          .get(&ty_param.ty().expect("TypeParameter id").id())
+          .cloned()
+          .expect("Failed to resolve BTreeMap key type_param");
+        let ty_param = &ty.type_params()[1];
+        let elm_ty = id_to_ref
+          .get(&ty_param.ty().expect("TypeParameter id").id())
+          .cloned()
+          .expect("Failed to resolve BTreeMap value type_param");
+        TypeMeta::BTreeMap(key_ty, elm_ty)
+      }
       TypeDef::Composite(s) if s.fields().len() == 1 && s.fields()[0].name().is_none() => {
         // Special handling of tuples.
         log::debug!("import_v14_type: Tuple: variants={:#?}", s.fields());
