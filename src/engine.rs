@@ -346,8 +346,8 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
   let rpc = rpc_manager.get_client(&opts.url)?;
 
   let types_registry = types::init_engine(&mut engine, &opts)?;
-  client::init_types_registry(&types_registry)?;
   metadata::init_types_registry(&types_registry)?;
+  client::init_types_registry(&types_registry)?;
   plugins::init_types_registry(&types_registry)?;
 
   // Get metadata/types for current block.

@@ -26,7 +26,7 @@ use crate::rpc::*;
 use crate::types::{EnumVariants, TypeMeta, TypeRef, Types, TypesRegistry};
 
 #[cfg(feature = "v14")]
-use crate::types::{get_type_name, is_type_compact};
+use crate::types::get_type_name;
 
 #[cfg(any(feature = "v13", feature = "v12",))]
 fn decode_meta<B: 'static, O: 'static>(
@@ -781,24 +781,7 @@ impl NamedType {
     let ty = types
       .resolve(md.ty().id())
       .ok_or_else(|| format!("Failed to resolve type."))?;
-    //let name = get_type_name(ty, types);
-    let name = md
-      .type_name()
-      .map(|ty_name| {
-        // Trim junk from `type_name`.
-        let name = if ty_name.starts_with("/*«*/") {
-          let end = ty_name.len() - 6;
-          &ty_name[6..end]
-        } else {
-          &ty_name[..]
-        };
-        if is_type_compact(ty) {
-          format!("Compact<{}>", name)
-        } else {
-          name.to_string()
-        }
-      })
-      .unwrap_or_else(|| get_type_name(ty, types, false));
+    let name = get_type_name(ty, types, true);
     let ty_meta = lookup.parse_type(&name)?;
     let named = Self {
       name: name.into(),
@@ -2182,7 +2165,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     let metadata = Metadata::from_runtime_metadata(runtime_metadata, types)?;
     types.set_metadata(metadata);
 
-    types.custom_encode("Call", TypeId::of::<EncodedCall>(), |value, data| {
+    types.custom_encode("RuntimeCall", TypeId::of::<EncodedCall>(), |value, data| {
       let call = value.cast::<EncodedCall>();
       data.encode(call);
       Ok(())

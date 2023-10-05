@@ -5,14 +5,11 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::{Arc, RwLock};
 
-use parity_scale_codec::{Compact, Decode, Encode, Error as PError, Input};
+use parity_scale_codec::{Compact, Decode, Error as PError, Input};
 use serde_json::{json, Map, Value};
 
 #[cfg(feature = "v14")]
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
-
-use sp_core::crypto::Ss58Codec;
-use sp_runtime::{generic::Era, MultiSignature};
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
@@ -28,7 +25,7 @@ use super::engine::EngineOptions;
 use super::metadata::EncodedArgs;
 use super::metadata::Metadata;
 use super::rpc::RpcHandler;
-use super::users::{AccountId, SharedUser};
+use super::users::SharedUser;
 use crate::RuntimeVersion;
 
 #[cfg(feature = "v14")]
@@ -345,14 +342,11 @@ impl From<TypeMeta> for TypeRef {
 impl std::fmt::Debug for TypeRef {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
     let meta = self.0.read().unwrap();
-    match &*meta {
-      TypeMeta::NewType(name, _) => f.write_fmt(format_args!("NewType({})", name)),
-      _ => meta.fmt(f),
-    }
+    meta.fmt(f)
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TypeMeta {
   /// Zero-sized `()`
   Unit,
@@ -384,6 +378,38 @@ pub enum TypeMeta {
   Unresolved(String),
 
   CustomType(CustomType),
+}
+
+impl std::fmt::Debug for TypeMeta {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    match self {
+      Self::Unit => f.write_fmt(format_args!("Unit")),
+      Self::Integer(size, compact) => f.write_fmt(format_args!("Integer({size}, {compact})")),
+      Self::Bool => f.write_fmt(format_args!("Bool")),
+      Self::Option(_) => f.write_fmt(format_args!("Option")),
+      Self::Box(_) => f.write_fmt(format_args!("Box")),
+      Self::OptionBool => f.write_fmt(format_args!("OptionBool")),
+      Self::Result(_, _) => f.write_fmt(format_args!("Result")),
+      Self::Vector(_) => f.write_fmt(format_args!("Vector")),
+
+      Self::BTreeSet(_) => f.write_fmt(format_args!("BTreeSet")),
+      Self::BTreeMap(_, _) => f.write_fmt(format_args!("BTreeMap")),
+
+      Self::Slice(len, _) => f.write_fmt(format_args!("Slice({len})")),
+      Self::String => f.write_fmt(format_args!("String")),
+
+      Self::Tuple(_) => f.write_fmt(format_args!("Tuple")),
+      Self::Struct(_) => f.write_fmt(format_args!("Struct")),
+      Self::Enum(_) => f.write_fmt(format_args!("Enum")),
+
+      Self::Compact(_) => f.write_fmt(format_args!("Compact")),
+      Self::NewType(name, _) => f.write_fmt(format_args!("NewType({name})")),
+
+      Self::Unresolved(name) => f.write_fmt(format_args!("Unresolved({name})")),
+
+      Self::CustomType(_) => f.write_fmt(format_args!("CustomType")),
+    }
+  }
 }
 
 impl Default for TypeMeta {
@@ -551,12 +577,11 @@ impl TypeMeta {
         } else if value.is::<ImmutableString>() {
           let s = value.into_immutable_string()?;
           // Maybe Hex-encoded string.
-          let bytes = if s.starts_with("0x") {
-            hex::decode(&s.as_bytes()[2..]).map_err(|e| e.to_string())?
+          if s.starts_with("0x") {
+            data.encode(hex::decode(&s.as_bytes()[2..]).map_err(|e| e.to_string())?);
           } else {
-            hex::decode(s.as_bytes()).map_err(|e| e.to_string())?
-          };
-          data.encode(bytes);
+            data.encode(s.as_bytes());
+          }
         } else {
           Err(format!("Expected a vector, got {:?}", value.type_id()))?;
         }
@@ -923,6 +948,7 @@ pub struct Types {
   types: IndexMap<String, TypeRef>,
   runtime_version: RuntimeVersion,
   metadata: Option<Metadata>,
+  short_names: HashMap<String, String>,
 }
 
 impl Types {
@@ -931,6 +957,7 @@ impl Types {
       types: IndexMap::new(),
       runtime_version,
       metadata: None,
+      short_names: HashMap::new(),
     };
     // Primitive types.
     types.insert_meta("u8", TypeMeta::Integer(1, false));
@@ -1213,6 +1240,10 @@ impl Types {
   }
 
   pub fn resolve(&mut self, name: &str) -> TypeRef {
+    let name = match self.short_names.get(name) {
+      Some(full_name) => full_name,
+      None => name,
+    };
     let entry = self.types.entry(name.into());
     let type_ref = entry.or_insert_with(|| TypeRef::from(TypeMeta::Unresolved(name.into())));
     type_ref.clone()
@@ -1430,16 +1461,19 @@ impl Types {
     let mut id_to_ref = HashMap::new();
     for ty in types.types() {
       let name = get_type_name(ty.ty(), types, true);
-      log::debug!("import_v14_type: {:?} => {}", ty.id(), name);
+      let short_name = get_type_name(ty.ty(), types, false);
+      log::debug!("import_v14_type: {:?} => {} ({})", ty.id(), name, short_name);
       let type_ref = self.resolve(&name);
 
       // Try mapping short name to full name.
-      let short_name = get_type_name(ty.ty(), types, false);
-      if !self.types.contains_key(&short_name) {
-        self.insert_meta(
-          &short_name,
-          TypeMeta::NewType(name.into(), type_ref.clone()),
-        );
+      if !self.short_names.contains_key(&short_name) {
+        self.short_names.insert(short_name, name.clone());
+      }
+      // Try mapping type ident to full name.
+      if let Some(ident) = ty.ty().path().ident() {
+        if !self.short_names.contains_key(&ident) {
+          self.short_names.insert(ident, name.clone());
+        }
       }
       id_to_ref.insert(ty.id(), type_ref);
     }
@@ -1788,111 +1822,9 @@ pub fn init_engine(
     .register_type_with_name::<TypeRef>("TypeRef")
     .register_fn("to_string", TypeRef::to_string)
     .register_result_fn("encode", TypeRef::encode_mut)
-    .register_result_fn("decode", TypeRef::decode_mut)
-    .register_type_with_name::<Era>("Era")
-    .register_fn("era_immortal", || Era::immortal())
-    .register_fn("era_mortal", |period: i64, current: i64| {
-      Era::mortal(period as u64, current as u64)
-    })
-    .register_fn("encode", |era: &mut Era| era.encode())
-    .register_fn("to_string", |era: &mut Era| format!("{:?}", era));
+    .register_result_fn("decode", TypeRef::decode_mut);
 
   let types_registry = TypesRegistry::new(opts.substrate_types.clone(), opts.custom_types.clone());
-
-  types_registry.add_init(|types, _rpc, _hash| {
-    // Custom encodings.
-    types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
-      let era = value.cast::<Era>();
-      data.encode(era);
-      Ok(())
-    })?;
-    types.custom_decode("Era", |mut input, _is_compact| {
-      let era = Era::decode(&mut input)?;
-      Ok(Dynamic::from(era))
-    })?;
-
-    types.custom_encode("AccountId", TypeId::of::<SharedUser>(), |value, data| {
-      let user = value.cast::<SharedUser>();
-      data.encode(user.public());
-      Ok(())
-    })?;
-    types.custom_encode("AccountId", TypeId::of::<AccountId>(), |value, data| {
-      data.encode(value.cast::<AccountId>());
-      Ok(())
-    })?;
-    types.custom_encode(
-      "AccountId",
-      TypeId::of::<ImmutableString>(),
-      |value, data| {
-        let val = value.cast::<ImmutableString>();
-        let acc = AccountId::from_string(&val).map_err(|e| format!("{:?}", e))?;
-        data.encode(acc);
-        Ok(())
-      },
-    )?;
-    types.custom_decode("AccountId", |mut input, _is_compact| {
-      Ok(Dynamic::from(AccountId::decode(&mut input)?))
-    })?;
-
-    types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
-      let user = value.cast::<SharedUser>();
-      // Encode variant idx.
-      #[cfg(not(feature = "polymesh_v2"))]
-      data.encode(0u8); // MultiAddress::Id
-      #[cfg(feature = "polymesh_v2")]
-      data.encode(0xffu8); // MultiAddress::Id
-      data.encode(user.public());
-      Ok(())
-    })?;
-
-    types.custom_encode(
-      "MultiSignature",
-      TypeId::of::<MultiSignature>(),
-      |value, data| {
-        data.encode(value.cast::<MultiSignature>());
-        Ok(())
-      },
-    )?;
-
-    #[cfg(feature = "libp2p")]
-    {
-      use libp2p_core::{Multiaddr, PeerId};
-
-      types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
-        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
-        let data: Vec<u8> = Decode::decode(&mut &opaque_bytes[..])?;
-        let peer = PeerId::from_bytes(&data[..]).map_err(|e| {
-          eprintln!("Failed to decode PeerId: {:?}", e);
-          "Failed to decode PeerId"
-        })?;
-        Ok(Dynamic::from(peer))
-      })?;
-
-      types.custom_decode("OpaqueMultiaddr", |mut input, _is_compact| {
-        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
-        let data: String = Decode::decode(&mut &opaque_bytes[..])?;
-        let multiaddr = Multiaddr::try_from(data).map_err(|e| {
-          eprintln!("Failed to decode Multiaddr: {:?}", e);
-          "Failed to decode Multiaddr"
-        })?;
-        Ok(Dynamic::from(multiaddr))
-      })?;
-    }
-    Ok(())
-  });
-
-  #[cfg(feature = "libp2p")]
-  {
-    use libp2p_core::{Multiaddr, PeerId};
-
-    engine
-      .register_type_with_name::<PeerId>("PeerId")
-      .register_fn("to_string", |id: &mut PeerId| id.to_base58())
-      .register_fn("to_debug", |id: &mut PeerId| id.to_base58())
-      .register_type_with_name::<Multiaddr>("Multiaddr")
-      .register_fn("to_string", |m: &mut Multiaddr| format!("{}", m))
-      .register_fn("to_debug", |m: &mut Multiaddr| format!("{:?}", m));
-  }
 
   Ok(types_registry)
 }

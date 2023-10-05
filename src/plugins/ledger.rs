@@ -394,7 +394,7 @@ impl LedgerApps {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
-    types.custom_encode("AccountId", TypeId::of::<SharedApp>(), |value, data| {
+    types.custom_encode("AccountId32", TypeId::of::<SharedApp>(), |value, data| {
       let mut app = value.cast::<SharedApp>();
       data.encode(app.acc());
       Ok(())

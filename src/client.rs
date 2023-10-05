@@ -9,7 +9,8 @@ use sp_core::{
   storage::{StorageData, StorageKey},
   Pair,
 };
-use sp_runtime::generic::Era;
+use sp_core::crypto::Ss58Codec;
+use sp_runtime::{generic::Era, MultiSignature};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -19,13 +20,13 @@ use dashmap::DashMap;
 use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
 
 use rhai::serde::{from_dynamic, to_dynamic};
-use rhai::{Dynamic, Engine, EvalAltResult, INT};
+use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString, INT};
 
 pub use crate::block::*;
 use crate::metadata::{EncodedCall, Metadata};
 use crate::rpc::*;
 use crate::types::{TypeLookup, TypeRef, TypesRegistry};
-use crate::users::{AccountId, User};
+use crate::users::{AccountId, User, SharedUser};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -781,6 +782,84 @@ impl ExtrinsicCallResult {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, rpc, _hash| {
+    // Custom encodings.
+    types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
+      let era = value.cast::<Era>();
+      data.encode(era);
+      Ok(())
+    })?;
+    types.custom_decode("Era", |mut input, _is_compact| {
+      let era = Era::decode(&mut input)?;
+      Ok(Dynamic::from(era))
+    })?;
+
+    types.custom_encode("AccountId32", TypeId::of::<SharedUser>(), |value, data| {
+      let user = value.cast::<SharedUser>();
+      data.encode(user.public());
+      Ok(())
+    })?;
+    types.custom_encode("AccountId32", TypeId::of::<AccountId>(), |value, data| {
+      data.encode(value.cast::<AccountId>());
+      Ok(())
+    })?;
+    types.custom_encode(
+      "AccountId32",
+      TypeId::of::<ImmutableString>(),
+      |value, data| {
+        let val = value.cast::<ImmutableString>();
+        let acc = AccountId::from_string(&val).map_err(|e| format!("{:?}", e))?;
+        data.encode(acc);
+        Ok(())
+      },
+    )?;
+    types.custom_decode("AccountId32", |mut input, _is_compact| {
+      Ok(Dynamic::from(AccountId::decode(&mut input)?))
+    })?;
+
+    types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
+      let user = value.cast::<SharedUser>();
+      // Encode variant idx.
+      #[cfg(not(feature = "polymesh_v2"))]
+      data.encode(0u8); // MultiAddress::Id
+      #[cfg(feature = "polymesh_v2")]
+      data.encode(0xffu8); // MultiAddress::Id
+      data.encode(user.public());
+      Ok(())
+    })?;
+
+    types.custom_encode(
+      "MultiSignature",
+      TypeId::of::<MultiSignature>(),
+      |value, data| {
+        data.encode(value.cast::<MultiSignature>());
+        Ok(())
+      },
+    )?;
+
+    #[cfg(feature = "libp2p")]
+    {
+      use libp2p_core::{Multiaddr, PeerId};
+
+      types.custom_decode("OpaquePeerId", |mut input, _is_compact| {
+        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
+        let data: Vec<u8> = Decode::decode(&mut &opaque_bytes[..])?;
+        let peer = PeerId::from_bytes(&data[..]).map_err(|e| {
+          eprintln!("Failed to decode PeerId: {:?}", e);
+          "Failed to decode PeerId"
+        })?;
+        Ok(Dynamic::from(peer))
+      })?;
+
+      types.custom_decode("OpaqueMultiaddr", |mut input, _is_compact| {
+        let opaque_bytes: Vec<u8> = Decode::decode(&mut input)?;
+        let data: String = Decode::decode(&mut &opaque_bytes[..])?;
+        let multiaddr = Multiaddr::try_from(data).map_err(|e| {
+          eprintln!("Failed to decode Multiaddr: {:?}", e);
+          "Failed to decode Multiaddr"
+        })?;
+        Ok(Dynamic::from(multiaddr))
+      })?;
+    }
     // Get Chain properties.
     let chain_props: Option<ChainProperties> = rpc.call_method("system_properties", json!([]))?;
     // Set default ss58 format.
@@ -911,7 +990,27 @@ pub fn init_engine(
     .register_get_result("is_success", ExtrinsicCallResult::is_success)
     .register_get_result("is_in_block", ExtrinsicCallResult::is_in_block)
     .register_get("xthex", ExtrinsicCallResult::xthex)
-    .register_fn("to_string", ExtrinsicCallResult::to_string);
+    .register_fn("to_string", ExtrinsicCallResult::to_string)
+    .register_type_with_name::<Era>("Era")
+    .register_fn("era_immortal", || Era::immortal())
+    .register_fn("era_mortal", |period: i64, current: i64| {
+      Era::mortal(period as u64, current as u64)
+    })
+    .register_fn("encode", |era: &mut Era| era.encode())
+    .register_fn("to_string", |era: &mut Era| format!("{:?}", era));
+
+  #[cfg(feature = "libp2p")]
+  {
+    use libp2p_core::{Multiaddr, PeerId};
+
+    engine
+      .register_type_with_name::<PeerId>("PeerId")
+      .register_fn("to_string", |id: &mut PeerId| id.to_base58())
+      .register_fn("to_debug", |id: &mut PeerId| id.to_base58())
+      .register_type_with_name::<Multiaddr>("Multiaddr")
+      .register_fn("to_string", |m: &mut Multiaddr| format!("{}", m))
+      .register_fn("to_debug", |m: &mut Multiaddr| format!("{:?}", m));
+  }
 
   let client = Client::connect(rpc.clone(), lookup)?;
 
