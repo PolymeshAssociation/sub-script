@@ -302,9 +302,14 @@ impl TypeRef {
     self.0.read().unwrap().decode_value(input, is_compact)
   }
 
-  pub fn encode(&self, value: Dynamic) -> Result<Vec<u8>, Box<EvalAltResult>> {
+  pub fn encode_arg(&self, value: Dynamic) -> Result<EncodedArgs, Box<EvalAltResult>> {
     let mut data = EncodedArgs::new();
     self.encode_value(value, &mut data)?;
+    Ok(data)
+  }
+
+  pub fn encode(&self, value: Dynamic) -> Result<Vec<u8>, Box<EvalAltResult>> {
+    let data = self.encode_arg(value)?;
     Ok(data.into_inner())
   }
 
@@ -592,7 +597,7 @@ impl TypeMeta {
           // Build BTreeSet from values.
           let mut set = BTreeSet::new();
           for value in values.into_iter() {
-            set.insert(type_ref.encode(value)?);
+            set.insert(type_ref.encode_arg(value)?);
           }
           data.encode(set);
         } else {
@@ -612,8 +617,8 @@ impl TypeMeta {
               let key = pair.pop();
               match (key, value, len) {
                 (Some(key), Some(value), 2) => {
-                  let key = key_ty.encode(key)?;
-                  let value = value_ty.encode(value)?;
+                  let key = key_ty.encode_arg(key)?;
+                  let value = value_ty.encode_arg(value)?;
                   map.insert(key, value);
                 }
                 (_, _, len) => {
