@@ -23,8 +23,8 @@
       "Hash": "Hash"
     }
   },
-  "AccountId": "[u8; 32]",
-  "AccountId32": "AccountId",
+  "AccountId32": "[u8; 32]",
+  "AccountId": "AccountId32",
   "AccountIndex": "u32",
   "Weight": "u64",
   "Percent": "u8",
