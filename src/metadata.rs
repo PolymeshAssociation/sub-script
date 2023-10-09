@@ -26,7 +26,7 @@ use crate::rpc::*;
 use crate::types::{EnumVariants, TypeMeta, TypeRef, Types, TypesRegistry};
 
 #[cfg(feature = "v14")]
-use crate::types::get_type_name;
+use crate::types::{get_type_name, is_type_compact};
 
 #[cfg(any(feature = "v13", feature = "v12",))]
 fn decode_meta<B: 'static, O: 'static>(
@@ -781,7 +781,15 @@ impl NamedType {
     let ty = types
       .resolve(md.ty().id())
       .ok_or_else(|| format!("Failed to resolve type."))?;
-    let name = get_type_name(ty, types, true);
+    let ty_name = md.type_name();
+    let name = match ty_name.map(|n| n.as_str()) {
+      Some("Balance") => if is_type_compact(ty) {
+        "Compact<Balance>".to_string()
+      } else {
+        "Balance".to_string()
+      },
+      _ => get_type_name(ty, types, true),
+    };
     let ty_meta = lookup.parse_type(&name)?;
     let named = Self {
       name: name.into(),
@@ -1747,7 +1755,7 @@ impl ErrorMetadata {
   }
 }
 
-#[derive(Clone, Encode)]
+#[derive(Clone, Debug, Encode)]
 pub struct EncodedCall(u8, u8, EncodedArgs);
 
 impl EncodedCall {
@@ -1765,7 +1773,7 @@ impl EncodedCall {
   }
 }
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EncodedArgs {
   data: Vec<u8>,
   compact: bool,
