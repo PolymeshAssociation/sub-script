@@ -305,11 +305,18 @@ fn create_asset_batch(prefix, offset, count, supply) {
 	return create_assets(tickers, #{ EquityCommon: () }, supply);
 }
 
+// Create a batch of IU assets and issuers.
+fn create_asset_batch_iu(prefix, offset, count, supply) {
+	print(`Create IU Assets: prefix='${prefix}', range=(${offset}..${count}), supply=${supply}`);
+	let tickers = gen_names(prefix, offset, count);
+	return create_assets_full(tickers, #{ EquityCommon: () }, supply, false);
+}
+
 // Create a batch of stablecoins and issuers.
 fn create_coin_batch(prefix, offset, count, supply) {
 	print(`Create Stablecoins: prefix='${prefix}', range=(${offset}..${count}), supply=${supply}`);
 	let tickers = gen_names(prefix, offset, count);
-	return create_assets(tickers, #{ StableCoin: () }, supply, true);
+	return create_assets(tickers, #{ StableCoin: () }, supply);
 }
 
 fn tickers_to_issuers(tickers) {
@@ -317,8 +324,31 @@ fn tickers_to_issuers(tickers) {
 	return tickers.map(ticker_to_issuer);
 }
 
+fn call_asset_create_asset(name, ticker, divisible, asset_type, idents, funding, disable_iu) {
+	if global::SPEC_VERSION < 5003000 {
+		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding, disable_iu);
+	} else if global::SPEC_VERSION < 6000000 {
+		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding, true);
+	} else {
+		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding);
+	}
+}
+
+fn call_asset_issue(ticker, supply, portfolio_kind) {
+	if global::SPEC_VERSION < 6000000 {
+		return Asset.issue(ticker, supply);
+	} else {
+		return Asset.issue(ticker, supply, portfolio_kind);
+	}
+}
+
 // Create assets.
 fn create_assets(tickers, asset_type, supply) {
+	return create_assets_full(tickers, asset_type, supply, true);
+}
+
+// Create assets.
+fn create_assets_full(tickers, asset_type, supply, disable_iu) {
 	let issuers = create_users(tickers_to_issuers(tickers), 100000000.0);
 
 	let stat_types = [
@@ -327,11 +357,11 @@ fn create_assets(tickers, asset_type, supply) {
 	let results = [];
 	for (ticker, idx) in tickers {
 		let issuer = issuers[idx];
-	
+
 		results += issuer.submit(Utility.batch_optimistic([
-			Asset.create_asset(`token ${ticker}`, ticker, true, asset_type, [], ()),
+			call_asset_create_asset(`token ${ticker}`, ticker, true, asset_type, [], (), disable_iu),
 			Statistics.set_active_asset_stats(#{ Ticker: ticker }, stat_types),
-			Asset.issue(ticker, supply, #{ Default: () }),
+			call_asset_issue(ticker, supply, #{ Default: () }),
 			Settlement.create_venue("", [], #{ Other: () }),
 			ComplianceManager.pause_asset_compliance(ticker),
 		]));
@@ -354,13 +384,20 @@ fn get_relay_tx_nonce(user) {
 
 // Prepare `Utiltity.relay_tx` call.
 fn make_relay_tx(user, c) {
-	return make_relay_tx_with_nonce(user, -1, c);
+	return make_relay_tx_with_nonce(user, -1, c, 0);
 }
 
-fn make_relay_tx_with_nonce(user, nonce, c) {
+fn make_relay_tx_with_offset(user, c, offset) {
+	return make_relay_tx_with_nonce(user, -1, c, offset);
+}
+
+fn make_relay_tx_with_nonce(user, nonce, c, offset) {
 	let acc = user.acc;
 	if nonce < 0 {
-		nonce = get_relay_tx_nonce(user);
+		if offset == () {
+			offset = 0;
+		}
+		nonce = get_relay_tx_nonce(user) + offset;
 	}
 	let unique_call = #{
 		nonce: nonce,
@@ -390,13 +427,17 @@ fn validate_investor_uniqueness_claim(target, claim, proof) {
 }
 
 fn add_investor_uniqueness_claim(user, ticker, uid) {
+	if global::SPEC_VERSION >= 6000000 {
+		// Not supported in v6.0.
+		return [];
+	}
 	let did = get_did(user);
 	if uid == () {
 		uid = PolymeshUtils.did_to_uid(did);
 	}
 	// Create investor uniqueness claim & proof.
 	let claim = PolymeshUtils.create_investor_uniqueness(did, ticker, uid);
-	print(`claim = ${claim}`);
+	//print(`claim = ${claim}`);
 	
 	// Add Investor Uniqueness claim.
 	return user.submit(Identity.add_investor_uniqueness_claim(did, claim[0], claim[1], ()));
@@ -405,7 +446,9 @@ fn add_investor_uniqueness_claim(user, ticker, uid) {
 // get a list of the user's venues.
 fn get_user_venues(user) {
 	let did = get_did(user);
-	//return STORAGE.map("Settlement", "UserVenues", did);
+	if global::SPEC_VERSION < 6000000 {
+		return STORAGE.map("Settlement", "UserVenues", did);
+	}
 	let paged = STORAGE.double_paged("Settlement", "UserVenues", did);
 	paged.set_page_count(500);
 	let venues = [];
@@ -487,10 +530,52 @@ fn get_or_create_venue(user, venue_type) {
 	return venue_id;
 }
 
+fn fungible_leg(sender, receiver, ticker, amount) {
+	if global::SPEC_VERSION < 6000000 {
+		return #{
+			from: sender,
+			to: receiver,
+			asset: ticker,
+			amount: amount,
+		};
+	} else {
+		return #{
+			Fungible: #{
+				sender: sender,
+				receiver: receiver,
+				ticker: ticker,
+				amount: amount,
+			}
+		};
+	}
+}
+
+fn call_settlement_add_and_affirm(venue_id, s_type, legs, portfolios, memo) {
+	if global::SPEC_VERSION < 6000000 {
+		return Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, portfolios);
+	} else {
+		return Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, portfolios, memo);
+	}
+}
+
+fn call_settlement_add(venue_id, s_type, legs, portfolios, memo) {
+	if global::SPEC_VERSION < 6000000 {
+		return Settlement.add_instruction(venue_id, s_type, (), (), legs);
+	} else {
+		return Settlement.add_instruction(venue_id, s_type, (), (), legs, memo);
+	}
+}
+
 fn setup_asset_fund_users(ticker, from, users, amount) {
 	// Get or create venue.
 	let venue_id = get_or_create_venue(from, #{ Other: () });
 
+	let s_type = #{ SettleOnAffirmation: () };
+	let is_manual = false;
+	if global::SPEC_VERSION >= 5002000 {
+		s_type = #{ SettleManual: 0 };
+		is_manual = true;
+	}
 	// Create settlements.
 	let settlements = [];
 	let from_did = get_did(from);
@@ -501,37 +586,30 @@ fn setup_asset_fund_users(ticker, from, users, amount) {
 	for user in users {
 		let did = get_did(user);
 		let portfolio = #{ did: did, kind: #{ Default: () } };
-		legs.push(#{
-			Fungible: #{
-				sender: from_portfolio,
-				receiver: portfolio,
-				ticker: ticker,
-				amount: amount,
-			}
-		});
+		legs.push(fungible_leg(from_portfolio, portfolio, ticker, amount));
 		sides.push(#{ user: user, portfolio: portfolio });
 
 		if legs.len() == global::MAX_LEGS {
-			let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, [from_portfolio], ()));
+			let res = from.submit(call_settlement_add_and_affirm(venue_id, s_type, legs, [from_portfolio], ()));
 			settlements.push(#{
 				res: res,
 				leg_count: legs.len(),
 				venue_user: from,
 				sides: sides,
-				is_manual: true,
+				is_manual: is_manual,
 			});
 			sides = [];
 			legs = [];
 		}
 	}
 	if legs.len() > 0 {
-		let res = from.submit(Settlement.add_and_affirm_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, [from_portfolio], ()));
+		let res = from.submit(call_settlement_add_and_affirm(venue_id, s_type, legs, [from_portfolio], ()));
 		settlements.push(#{
 			res: res,
 			leg_count: legs.len(),
 			venue_user: from,
 			sides: sides,
-			is_manual: true,
+			is_manual: is_manual,
 		});
 	}
 
@@ -540,44 +618,44 @@ fn setup_asset_fund_users(ticker, from, users, amount) {
 
 fn asset_fund_users(ticker, from, users, amount) {
 	let settlements = setup_asset_fund_users(ticker, from, users, amount);
-	return affirm_settlements(settlements);
+	let results = affirm_settlements(settlements);
+	wait_for_in_block(results);
+	results += execute_settlements(settlements);
+	return results;
 }
 
 fn create_settlement(exchange, venue_id, orders, sides) {
+	let s_type = #{ SettleOnAffirmation: () };
+	let is_manual = false;
+	if global::SPEC_VERSION >= 5002000 {
+		s_type = #{ SettleManual: 0 };
+		is_manual = true;
+	}
 	// Create settlements.
 	let legs = [];
 	for order in orders {
-		let from = sides[order.from];
-		let to = sides[order.to];
-		legs.push(#{
-			Fungible: #{
-				sender: from.portfolio,
-				receiver: to.portfolio,
-				ticker: order.asset,
-				amount: order.amount,
-			}
-		});
+		let sender = sides[order.sender];
+		let receiver = sides[order.receiver];
+		legs.push(fungible_leg(sender.portfolio, receiver.portfolio, order.ticker, order.amount));
 	}
-	let res = exchange.submit(Settlement.add_instruction(venue_id, #{ SettleManual: 0 }, (), (), legs, ()));
+	let res = exchange.submit(call_settlement_add(venue_id, s_type, legs, ()));
 	return #{
 		res: res,
 		leg_count: legs.len(),
 		sides: sides,
 		venue_user: exchange,
-		is_manual: true,
+		is_manual: is_manual,
 	};
 }
 
 fn create_buy_settlement(exchange, venue_id, buyer, seller, asset, coin, asset_amount, coin_amount) {
 	return create_settlement(exchange, venue_id, [
-		#{ from: 0, to: 1, asset: asset, amount: asset_amount },
-		#{ from: 1, to: 0, asset: coin, amount: coin_amount },
+		#{ sender: 0, receiver: 1, ticker: asset, amount: asset_amount },
+		#{ sender: 1, receiver: 0, ticker: coin, amount: coin_amount },
 	], [buyer, seller]);
 }
 
-fn affirm_settlement(settlement) {
-	let results = [];
-
+fn get_settlement_id(settlement) {
 	// Wait for settlement to be created and get the instruction_id.
 	let instruction_id = ();
 	for event in settlement.res.events("Settlement.InstructionCreated") {
@@ -585,14 +663,31 @@ fn affirm_settlement(settlement) {
 	}
 	if instruction_id == () {
 		let reason = settlement.res.result;
-		print(`Failed to create instruction: ${reason}`);
+		print(`Failed to create instruction: ${settlement}`);
+		for (side, idx) in settlement.sides {
+			print(`  - side[${idx}] = ${side.portfolio.did}`);
+		}
+	}
+	return instruction_id;
+}
+
+fn affirm_settlement(settlement) {
+	let results = [];
+
+	// Wait for settlement to be created and get the instruction_id.
+	let instruction_id = get_settlement_id(settlement);
+	if instruction_id == () {
 		return [];
 	}
 
 	// Each side affirms the settlement.
 	let leg_count = settlement.leg_count;
 	for side in settlement.sides {
-		results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio]));
+		if global::SPEC_VERSION < 6000000 {
+			results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio], leg_count));
+		} else {
+			results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio]));
+		}
 	}
 	return results;
 }
@@ -607,20 +702,25 @@ fn affirm_settlements(settlements) {
 
 fn execute_settlement(settlement) {
 	// Wait for settlement to be created and get the instruction_id.
-	let instruction_id = ();
-	for event in settlement.res.events("Settlement.InstructionCreated") {
-		instruction_id = event.args[2];
-	}
+	let instruction_id = get_settlement_id(settlement);
 	if instruction_id == () {
-		let reason = settlement.res.result;
-		print(`Failed to create instruction: ${reason}`);
 		return [];
 	}
 
+	if global::SPEC_VERSION < 5002000 {
+		// manual execution not supported.
+		return [];
+	}
 	// Each side affirms the settlement.
-	return settlement.venue_user.submit(
-		Settlement.execute_manual_instruction(instruction_id, (), settlement.leg_count, 0, 0, ())
-	);
+	if global::SPEC_VERSION < 6000000 {
+		return settlement.venue_user.submit(
+			Settlement.execute_manual_instruction(instruction_id, settlement.leg_count, ())
+		);
+	} else {
+		return settlement.venue_user.submit(
+			Settlement.execute_manual_instruction(instruction_id, (), settlement.leg_count, 0, 0, ())
+		);
+	}
 }
 
 fn execute_settlements(settlements) {

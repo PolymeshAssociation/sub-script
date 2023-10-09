@@ -41,7 +41,7 @@ results = [];
 
 print("Create assets with Investor Uniqueness.");
 let supply = 10000.0;
-let res = p::create_asset_batch(prefix, 0, 10, supply * (investors.len() + 10), false);
+let res = p::create_asset_batch_iu(prefix, 0, 10, supply * (investors.len() + 10));
 let issuers = res[0];
 let tickers = res[1];
 
@@ -64,5 +64,6 @@ results = [];
 print(`Give the investors some assets`);
 for (ticker, idx) in tickers {
 	let issuer = issuers[idx];
-	p::asset_fund_users(ticker, issuer, investors, supply);
+	results += p::asset_fund_users(ticker, issuer, investors, supply);
 }
+p::wait_for_in_block(results);

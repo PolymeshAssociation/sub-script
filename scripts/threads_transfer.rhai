@@ -9,6 +9,10 @@ if prefix == () {
 let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 
+let threads = if count > 10 { 10 } else { 1 };
+count /= threads;
+print(`${threads} threads, ${count} users per thread.`);
+
 let task_code = `
 	let offset = ARG.shift();
 	let prefix = "${prefix}";
@@ -44,7 +48,7 @@ let task_code = `
 
 let tasks = [];
 
-for offset in range(0, 10) {
+for offset in range(0, threads) {
 	tasks += ENGINE.spawn_task_args(task_code, [offset * count]);
 }
 

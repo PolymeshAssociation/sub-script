@@ -98,6 +98,21 @@ let encoded = func.encode_call([user]);
 print(`mock_cdd.encoded: ${encoded}, len: ${encoded.len()}`);
 // */
 
+let ty = Types.resolve("AccountId");
+print(`AccountId: ${ty}`);
+let ty = Types.resolve("AccountId32");
+print(`AccountId32: ${ty}`);
+let ty = Types.resolve("sp_core::crypto::AccountId32");
+print(`sp_core::crypto::AccountId32: ${ty}`);
+
+let ty = Types.resolve("MultiAddress");
+print(`MultiAddress: ${ty}`);
+let ty = Types.resolve("sp_runtime::multiaddress::MultiAddress");
+print(`sp_runtime::multiaddress::MultiAddress: ${ty}`);
+
 let ty = Types.resolve("Call");
 print(`Call: ${ty}`);
+
+let ty = Types.resolve("Balance");
+print(`Balance: ${ty}`);
 

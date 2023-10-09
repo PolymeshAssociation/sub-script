@@ -1,6 +1,12 @@
 // Dump node metadata.
 
-let modules = METADATA.modules;
+let block_hash = ARG.shift();
+let rt = CLIENT.get_block_runtime_version(block_hash);
+print(`runtime version: ${rt}`);
+let last_types = TypesRegistry.get_block_types(RPC, rt, block_hash);
+//let metadata = METADATA;
+let metadata = last_types.metadata;
+let modules = metadata.modules;
 modules.sort(|m1, m2| {
 	return m1.index - m2.index;
 });

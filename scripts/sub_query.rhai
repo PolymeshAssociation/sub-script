@@ -19,8 +19,8 @@ let db_senders = [];
 let db_tasks = [];
 
 print(`Start DBTasks`);
-for idx in range(0, 2) {
-	let channel = new_sync_channel(1000);
+for idx in range(0, 4) {
+	let channel = new_sync_channel(2000);
 	db_tasks += ENGINE.spawn_file_task_args("./scripts/sub_query_db_task.rhai", [idx, channel[1]]);
 	db_senders += channel[0];
 }

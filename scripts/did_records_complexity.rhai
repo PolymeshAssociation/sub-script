@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 const max_did_budget = 1000000;
 const key_limit = 200;

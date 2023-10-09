@@ -19,10 +19,9 @@ let res = user.submit(Identity.add_authorization(#{
 	Account: key
 }, #{
 	JoinIdentity: #{
-		asset: #{ These: ["ACME"] },
-		//asset: #{ Whole: () },
-		extrinsic: #{ Whole: () },
-		portfolio: #{ Whole: () },
+		asset: #{ These: [] },
+		extrinsic: #{ Whole: [] },
+		portfolio: #{ Whole: [] },
 	}
 }, ()));
 let events = res.events("Identity.AuthorizationAdded");

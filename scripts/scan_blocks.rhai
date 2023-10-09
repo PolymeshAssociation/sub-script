@@ -89,18 +89,22 @@ while block_number <= end_block {
 		// Get decoded transactions from block.
 		let calls = block.extrinsics;
 		let c_count = calls.len();
-		if c_count != 1 || e_count != 1 {
-			//*
+		if c_count != 1 { //|| e_count != 1 {
+			/*
 			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
 			print(`- calls:`);
 			for xt in block.extrinsics {
-				print(`  -- ${xt.decoded_call}`);
+				if xt.is_signed {
+					print(`  -- signed:${xt.signed_by} ${xt.decoded_call}`);
+				} else {
+					print(`  -- unsigned ${xt.decoded_call}`);
+				}
 			}
-			print(`events = ${events}`);
-			//*/
+			//print(`events = ${events}`);
+			// */
 		} else {
 			counter += 1;
-			if counter > 10 {
+			if counter > 1000 {
 				counter = 0;
 				print(`number = ${block.block_number}`);
 			}

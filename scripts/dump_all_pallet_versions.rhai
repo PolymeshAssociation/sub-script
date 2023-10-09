@@ -19,12 +19,33 @@ skip_size = if skip_size == () { 1 } else { parse_int(skip_size) };
 let end_block = start_block + count;
 
 fn dump_versions(spec, metadata, block) {
+	let mt_STORAGE = new_storage(CLIENT, metadata);
 	//print(`Spec version: ${spec}`);
-	for mod in metadata.modules {
+	let mods = metadata.modules;
+	mods.sort(|s1, s2| {
+		let s1 = s1.name;
+		let s2 = s2.name;
+		if s1 == s2 {
+			return 0;
+		} else if s1 < s2 {
+			return -1;
+		} else {
+			return 1;
+		}
+	});
+	for mod in mods {
 		let mod_name = mod.name;
-		let version = STORAGE.pallet_version_at_block(mod_name, block);
-		if version != () {
-			print(`${mod_name}: ${version}`);
+		for storage in mod.storage {
+			if storage.name == "StorageVersion" {
+				let version = mt_STORAGE.value_at_block(mod_name, storage.name, block);
+				if version > 0 {
+					print(`${mod_name}: version=${version}`);
+				}
+			}
+		}
+		let pallet_version = mt_STORAGE.pallet_version_at_block(mod_name, block);
+		if pallet_version != () {
+			print(`${mod_name}: pallet_version=${pallet_version}`);
 		}
 	}
 }

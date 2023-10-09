@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 print("Use threads to transfer ERC20 Tokens.");
 
@@ -18,7 +18,8 @@ let users = p::create_users_batch("THREAD", 0, threads, 100000.0);
 let token = #{
 	Id: contract,
 };
-let token_owner = USER.Alice;
+//let token_owner = USER.Alice;
+let token_owner = USER.Test123;
 let dst = USER.Bob;
 let balance = 0.000001;
 

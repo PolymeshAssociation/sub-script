@@ -12,6 +12,12 @@ let investor_count = count;
 
 let threads = if count > 30 { 30 } else { 1 };
 
+// Make sure there are at least 2 users per thread.
+if (count / threads) <= 1 {
+	investor_count = threads * 2;
+	count = investor_count;
+}
+
 let per_thread = 2;
 let asset_count = per_thread * threads;
 let coin_count = per_thread * threads;

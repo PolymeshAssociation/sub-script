@@ -1,4 +1,4 @@
-import "mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 print("Get number of secondary keys for an identity.");
 

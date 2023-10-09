@@ -54,6 +54,8 @@ let whitelist = [
 	"Settlement.execute_manual_instruction",
 	"System.remark",
 	"System.remark_with_event",
+	"Utility.batch",
+	"Utility.batch_optimistic",
 ];
 
 let updates = [];
