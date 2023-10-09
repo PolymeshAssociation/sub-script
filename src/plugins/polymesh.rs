@@ -3,13 +3,11 @@ use std::collections::HashMap;
 
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString};
 
-use polymesh_primitives::{
-  Claim, IdentityId, Ticker,
-};
 #[cfg(feature = "confidential_identity")]
 use polymesh_primitives::{
   investor_zkproof_data::v1, valid_proof_of_investor, CddId, InvestorUid, Scope,
 };
+use polymesh_primitives::{Claim, IdentityId, Ticker};
 
 use parity_scale_codec::Decode;
 
@@ -138,12 +136,16 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       data.encode(&ticker);
       Ok(())
     })?;
-    types.custom_encode("polymesh_primitives::ticker::Ticker", TypeId::of::<ImmutableString>(), |value, data| {
-      let value = value.cast::<ImmutableString>();
-      let ticker = str_to_ticker(value.as_str())?;
-      data.encode(&ticker);
-      Ok(())
-    })?;
+    types.custom_encode(
+      "polymesh_primitives::ticker::Ticker",
+      TypeId::of::<ImmutableString>(),
+      |value, data| {
+        let value = value.cast::<ImmutableString>();
+        let ticker = str_to_ticker(value.as_str())?;
+        data.encode(&ticker);
+        Ok(())
+      },
+    )?;
     types.custom_encode("Claim", TypeId::of::<Claim>(), |value, data| {
       data.encode(value.cast::<Claim>());
       Ok(())

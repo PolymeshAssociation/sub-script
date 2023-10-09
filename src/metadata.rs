@@ -783,11 +783,13 @@ impl NamedType {
       .ok_or_else(|| format!("Failed to resolve type."))?;
     let ty_name = md.type_name();
     let name = match ty_name.map(|n| n.as_str()) {
-      Some("Balance") => if is_type_compact(ty) {
-        "Compact<Balance>".to_string()
-      } else {
-        "Balance".to_string()
-      },
+      Some("Balance") => {
+        if is_type_compact(ty) {
+          "Compact<Balance>".to_string()
+        } else {
+          "Balance".to_string()
+        }
+      }
       _ => get_type_name(ty, types, true),
     };
     let ty_meta = lookup.parse_type(&name)?;
@@ -814,7 +816,12 @@ impl NamedType {
   }
 
   pub fn decode_value(&self, data: &mut &[u8]) -> Result<Dynamic, Box<EvalAltResult>> {
-    Ok(self.ty_meta.decode_value(data, false).map_err(|e| e.to_string())?)
+    Ok(
+      self
+        .ty_meta
+        .decode_value(data, false)
+        .map_err(|e| e.to_string())?,
+    )
   }
 
   pub fn decode(&self, data: Vec<u8>) -> Result<Dynamic, Box<EvalAltResult>> {
@@ -918,7 +925,7 @@ impl KeyHasher {
     &self,
     prefix: &StorageKey,
     key: &StorageKey,
-    only_last_key: bool
+    only_last_key: bool,
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let (key_prefix, key) = key.0.split_at(prefix.0.len());
     if key_prefix != prefix.as_ref() {
@@ -927,12 +934,8 @@ impl KeyHasher {
 
     match self.type_hashers.len() {
       0 => Err(format!("This storage isn't a map type."))?,
-      1 => {
-        Ok(self.decode_hash_key(0, &mut &key[..])?)
-      }
-      2 if only_last_key => {
-        Ok(self.decode_hash_key(1, &mut &key[..])?)
-      }
+      1 => Ok(self.decode_hash_key(0, &mut &key[..])?),
+      2 if only_last_key => Ok(self.decode_hash_key(1, &mut &key[..])?),
       2 => {
         let data = &mut &key[..];
         let key0 = self.decode_hash_key(0, data)?;
@@ -1006,22 +1009,12 @@ impl KeyHasher {
     Ok(())
   }
 
-  fn decode_hash_key(
-    &self,
-    idx: usize,
-    key: &mut &[u8],
-  ) -> Result<Dynamic, Box<EvalAltResult>> {
+  fn decode_hash_key(&self, idx: usize, key: &mut &[u8]) -> Result<Dynamic, Box<EvalAltResult>> {
     let (ty, hasher) = &self.type_hashers[idx];
     *key = match hasher {
-      KeyHasherType::Blake2_128Concat => {
-        &key[16..]
-      }
-      KeyHasherType::Twox64Concat => {
-        &key[8..]
-      }
-      KeyHasherType::Identity => {
-        &key[..]
-      }
+      KeyHasherType::Blake2_128Concat => &key[16..],
+      KeyHasherType::Twox64Concat => &key[8..],
+      KeyHasherType::Identity => &key[..],
       _ => {
         return Err(format!("The key hasher {:?} isn't reversible.", hasher).into());
       }
@@ -1436,7 +1429,6 @@ impl StorageMetadata {
   fn prefix_key(&mut self) -> String {
     format!("0x{}", hex::encode(self.get_prefix_key()))
   }
-
 
   fn to_string(&mut self) -> String {
     format!(

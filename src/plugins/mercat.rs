@@ -7,23 +7,25 @@ use mercat::{
   asset::AssetIssuer,
   confidential_identity_core::asset_proofs::{Balance, ElgamalSecretKey},
   transaction::{CtxMediator, CtxReceiver, CtxSender},
-  Account, AccountCreatorInitializer, AmountSource, AssetTransactionIssuer, EncryptedAmount, EncryptionKeys,
-  EncryptionPubKey, FinalizedTransferTx, InitializedAssetTx, InitializedTransferTx,
-  JustifiedTransferTx, PubAccount, PubAccountTx, SecAccount, MediatorAccount,
+  Account, AccountCreatorInitializer, AmountSource, AssetTransactionIssuer, EncryptedAmount,
+  EncryptionKeys, EncryptionPubKey, FinalizedTransferTx, InitializedAssetTx, InitializedTransferTx,
+  JustifiedTransferTx, MediatorAccount, PubAccount, PubAccountTx, SecAccount,
   TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
 };
 pub use mercat_common::{
-  create_rng_from_seed,
-  errors::Error, gen_seed, init_print_logger,
-  user_public_account_file, update_account_map, user_secret_account_file, OrderedPubAccount,
-  OFF_CHAIN_DIR, ON_CHAIN_DIR, SECRET_ACCOUNT_FILE,
+  create_rng_from_seed, errors::Error, gen_seed, init_print_logger, update_account_map,
+  user_public_account_file, user_secret_account_file, OrderedPubAccount, OFF_CHAIN_DIR,
+  ON_CHAIN_DIR, SECRET_ACCOUNT_FILE,
 };
 
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
+use rust_decimal::{
+  prelude::{FromPrimitive, ToPrimitive},
+  Decimal,
+};
 
 use crate::client::Client;
 use crate::rpc::RpcHandler;
@@ -55,9 +57,7 @@ pub struct MercatUtils {
 
 impl MercatUtils {
   pub fn new() -> Result<Self, Box<EvalAltResult>> {
-    Ok(Self {
-      seed: None,
-    })
+    Ok(Self { seed: None })
   }
 
   pub fn set_seed(&mut self, seed: Option<String>) {
@@ -80,10 +80,7 @@ impl MercatUtils {
     )
   }
 
-  fn mercat_create_account_tx(
-    &mut self,
-    account: Account,
-  ) -> Result<PubAccountTx, Error> {
+  fn mercat_create_account_tx(&mut self, account: Account) -> Result<PubAccountTx, Error> {
     let seed = self.seed();
     let mut rng = create_rng_from_seed(seed)?;
 
@@ -100,9 +97,7 @@ impl MercatUtils {
     Ok(account_tx)
   }
 
-  fn mercat_create_keys(
-    &mut self,
-  ) -> Result<EncryptionKeys, Error> {
+  fn mercat_create_keys(&mut self) -> Result<EncryptionKeys, Error> {
     let seed = self.seed();
     let mut rng = create_rng_from_seed(seed)?;
 
@@ -114,29 +109,17 @@ impl MercatUtils {
     })
   }
 
-  pub fn create_mediator(
-    &mut self,
-  ) -> Result<MediatorAccount, Box<EvalAltResult>> {
-    Ok(
-      self
-        .mercat_create_mediator()
-        .map_err(|e| e.to_string())?,
-    )
+  pub fn create_mediator(&mut self) -> Result<MediatorAccount, Box<EvalAltResult>> {
+    Ok(self.mercat_create_mediator().map_err(|e| e.to_string())?)
   }
 
-  fn mercat_create_mediator(
-    &mut self,
-  ) -> Result<MediatorAccount, Error> {
+  fn mercat_create_mediator(&mut self) -> Result<MediatorAccount, Error> {
     let encryption_key = self.mercat_create_keys()?;
 
-    Ok(MediatorAccount {
-      encryption_key,
-    })
+    Ok(MediatorAccount { encryption_key })
   }
 
-  pub fn create_secret_account(
-    &mut self,
-  ) -> Result<Account, Box<EvalAltResult>> {
+  pub fn create_secret_account(&mut self) -> Result<Account, Box<EvalAltResult>> {
     Ok(
       self
         .mercat_create_secret_account()
@@ -144,18 +127,14 @@ impl MercatUtils {
     )
   }
 
-  fn mercat_create_secret_account(
-    &mut self,
-  ) -> Result<Account, Error> {
+  fn mercat_create_secret_account(&mut self) -> Result<Account, Error> {
     let enc_keys = self.mercat_create_keys()?;
 
     let account = Account {
       public: PubAccount {
         owner_enc_pub_key: enc_keys.public,
       },
-      secret: SecAccount {
-        enc_keys,
-      },
+      secret: SecAccount { enc_keys },
     };
 
     Ok(account)
@@ -167,16 +146,22 @@ impl MercatUtils {
     encrypted_value: EncryptedAmount,
   ) -> Result<Decimal, Box<EvalAltResult>> {
     #[cfg(not(all(feature = "discrete_log", feature = "rayon")))]
-    let value = {
-      account.secret.enc_keys.secret.decrypt(&encrypted_value)
-    };
+    let value = { account.secret.enc_keys.secret.decrypt(&encrypted_value) };
     #[cfg(all(not(feature = "discrete_log"), feature = "rayon"))]
     let value = {
-      account.secret.enc_keys.secret.decrypt_parallel(&encrypted_value)
+      account
+        .secret
+        .enc_keys
+        .secret
+        .decrypt_parallel(&encrypted_value)
     };
     #[cfg(feature = "discrete_log")]
     let value = {
-      account.secret.enc_keys.secret.decrypt_discrete_log(&encrypted_value)
+      account
+        .secret
+        .enc_keys
+        .secret
+        .decrypt_discrete_log(&encrypted_value)
     };
 
     let mut value = Decimal::from_u64(value.map_err(|e| e.to_string())?)
@@ -195,7 +180,10 @@ impl MercatUtils {
   ) -> Result<Dynamic, Box<EvalAltResult>> {
     let low = to_balance(low)?;
     let high = to_balance(high)?;
-    let balance = account.secret.enc_keys.secret
+    let balance = account
+      .secret
+      .enc_keys
+      .secret
       .decrypt_with_hint(&encrypted_value, low, high)
       .and_then(|v| Decimal::from_u64(v as u64))
       .map(|v| Dynamic::from_decimal(v / Decimal::from(1_000_000)))
@@ -210,10 +198,7 @@ impl MercatUtils {
   ) -> Result<InitializedAssetTx, Box<EvalAltResult>> {
     Ok(
       self
-        .mercat_mint_asset(
-          issuer,
-          to_balance(amount)?,
-        )
+        .mercat_mint_asset(issuer, to_balance(amount)?)
         .map_err(|e| e.to_string())?,
     )
   }
@@ -310,7 +295,6 @@ impl MercatUtils {
     amount: Balance,
     init_tx: InitializedTransferTx,
   ) -> Result<(), Error> {
-
     // Finalize the transaction.
     let receiver = CtxReceiver {};
     receiver
@@ -330,13 +314,7 @@ impl MercatUtils {
   ) -> Result<(), Box<EvalAltResult>> {
     Ok(
       self
-        .mercat_justify_tx(
-          mediator,
-          sender,
-          sender_balance,
-          receiver,
-          init_tx,
-        )
+        .mercat_justify_tx(mediator, sender, sender_balance, receiver, init_tx)
         .map_err(|e| e.to_string())?,
     )
   }
@@ -390,24 +368,20 @@ impl MercatUtils {
   }
 }
 
-pub fn init_vec_encoded<T: Decode + Encode + Clone + Send + Sync + 'static>(name: &str, types: &mut Types) -> Result<(), Box<EvalAltResult>> {
-  types.custom_encode(
-    name,
-    TypeId::of::<T>(),
-    move |value, data| {
-      let val = value.cast::<T>();
-      let encoded = val.encode();
-      data.encode(encoded);
-      Ok(())
-    },
-  )?;
-  types.custom_decode(
-    name,
-    |mut input, _is_compact| {
-      let encoded = Vec::decode(&mut input)?;
-      Ok(Dynamic::from(T::decode(&mut encoded.as_slice())?))
-    }
-  )?;
+pub fn init_vec_encoded<T: Decode + Encode + Clone + Send + Sync + 'static>(
+  name: &str,
+  types: &mut Types,
+) -> Result<(), Box<EvalAltResult>> {
+  types.custom_encode(name, TypeId::of::<T>(), move |value, data| {
+    let val = value.cast::<T>();
+    let encoded = val.encode();
+    data.encode(encoded);
+    Ok(())
+  })?;
+  types.custom_decode(name, |mut input, _is_compact| {
+    let encoded = Vec::decode(&mut input)?;
+    Ok(Dynamic::from(T::decode(&mut encoded.as_slice())?))
+  })?;
   Ok(())
 }
 
@@ -434,9 +408,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     )?;
     types.custom_decode(
       "pallet_confidential_asset::MercatAccount",
-      |mut input, _is_compact| {
-        Ok(Dynamic::from(EncryptionPubKey::decode(&mut input)?))
-      }
+      |mut input, _is_compact| Ok(Dynamic::from(EncryptionPubKey::decode(&mut input)?)),
     )?;
     types.custom_encode(
       "confidential_identity_core::asset_proofs::elgamal_encryption::CipherText",
@@ -449,9 +421,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     )?;
     types.custom_decode(
       "confidential_identity_core::asset_proofs::elgamal_encryption::CipherText",
-      |mut input, _is_compact| {
-        Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?))
-      }
+      |mut input, _is_compact| Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?)),
     )?;
     types.custom_encode(
       "EncryptedAmount",
@@ -462,12 +432,9 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
         Ok(())
       },
     )?;
-    types.custom_decode(
-      "EncryptedAmount",
-      |mut input, _is_compact| {
-        Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?))
-      }
-    )?;
+    types.custom_decode("EncryptedAmount", |mut input, _is_compact| {
+      Ok(Dynamic::from(EncryptedAmount::decode(&mut input)?))
+    })?;
 
     Ok(())
   });
@@ -493,7 +460,10 @@ pub fn init_engine(
     .register_result_fn("create_secret_account", MercatUtils::create_secret_account)
     .register_result_fn("mint_asset", MercatUtils::mint_asset)
     .register_result_fn("decrypt_balance", MercatUtils::decrypt_balance)
-    .register_result_fn("decrypt_balance_with_hint", MercatUtils::decrypt_balance_with_hint)
+    .register_result_fn(
+      "decrypt_balance_with_hint",
+      MercatUtils::decrypt_balance_with_hint,
+    )
     .register_result_fn("create_tx", MercatUtils::create_tx)
     .register_result_fn("finalize_tx", MercatUtils::finalize_tx)
     .register_result_fn("justify_tx", MercatUtils::justify_tx)
@@ -511,12 +481,15 @@ pub fn init_engine(
     .register_type_with_name::<EncryptedAmount>("EncryptedAmount")
     .register_fn("to_string", hex_to_string::<EncryptedAmount>)
     .register_type_with_name::<EncryptionPubKey>("EncryptionPubKey")
-    .register_result_fn("encrypt_amount", |k: &mut EncryptionPubKey, amount: Dynamic| {
-      let amount = to_balance(amount)?;
-      let mut rng = rand::thread_rng();
-      let (_, enc_amount) = k.encrypt_value(amount.into(), &mut rng);
-      Ok(enc_amount as EncryptedAmount)
-    })
+    .register_result_fn(
+      "encrypt_amount",
+      |k: &mut EncryptionPubKey, amount: Dynamic| {
+        let amount = to_balance(amount)?;
+        let mut rng = rand::thread_rng();
+        let (_, enc_amount) = k.encrypt_value(amount.into(), &mut rng);
+        Ok(enc_amount as EncryptedAmount)
+      },
+    )
     .register_fn("to_string", hex_to_string::<EncryptionPubKey>)
     .register_type_with_name::<InitializedAssetTx>("InitializedAssetTx")
     .register_fn("to_string", hex_to_string::<InitializedAssetTx>)

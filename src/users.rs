@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use sp_core::{sr25519, Pair};
-use sp_runtime::{AccountId32, MultiSignature, traits::Verify};
+use sp_runtime::{traits::Verify, AccountId32, MultiSignature};
 
 use dashmap::DashMap;
 
@@ -56,10 +56,7 @@ impl User {
     sig.verify(&data[..], &self.acc())
   }
 
-  pub fn sign_call(
-    &mut self,
-    call: EncodedCall,
-  ) -> Result<String, Box<EvalAltResult>> {
+  pub fn sign_call(&mut self, call: EncodedCall) -> Result<String, Box<EvalAltResult>> {
     // Check if we need to load the `nonce` for this user.
     if self.nonce == 0u32 {
       self.nonce = self.client.get_nonce(self.acc())?.unwrap_or(0);
@@ -117,10 +114,7 @@ impl SharedUser {
     self.0.read().unwrap().verify_sig(data, &sig)
   }
 
-  pub fn sign_call(
-    &mut self,
-    call: EncodedCall,
-  ) -> Result<String, Box<EvalAltResult>> {
+  pub fn sign_call(&mut self, call: EncodedCall) -> Result<String, Box<EvalAltResult>> {
     self.0.write().unwrap().sign_call(call)
   }
 

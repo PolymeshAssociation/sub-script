@@ -475,9 +475,12 @@ impl EventRecords {
 pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<BlockHash>("BlockHash")
-    .register_result_fn("new_hash", |hash: &str| -> Result<BlockHash, Box<EvalAltResult>> {
-      Ok(BlockHash::from_str(hash).map_err(|e| e.to_string())?)
-    })
+    .register_result_fn(
+      "new_hash",
+      |hash: &str| -> Result<BlockHash, Box<EvalAltResult>> {
+        Ok(BlockHash::from_str(hash).map_err(|e| e.to_string())?)
+      },
+    )
     .register_fn("to_string", |hash: &mut BlockHash| hash.to_string())
     .register_fn("to_debug", |hash: &mut BlockHash| format!("{:?}", hash))
     .register_type_with_name::<BlockHeader>("BlockHeader")

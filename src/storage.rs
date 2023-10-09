@@ -1,8 +1,8 @@
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
-use sp_core::storage::StorageKey;
-use frame_support::traits::STORAGE_VERSION_STORAGE_KEY_POSTFIX;
 use frame_support::storage::storage_prefix;
+use frame_support::traits::STORAGE_VERSION_STORAGE_KEY_POSTFIX;
+use sp_core::storage::StorageKey;
 
 use crate::block::{hash_from_dynamic, BlockHash};
 use crate::client::Client;
@@ -71,7 +71,11 @@ impl StorageKeysPaged {
 
     let result = keys
       .into_iter()
-      .map(|key| self.md.decode_map_key(&self.prefix, &key, self.only_last_key))
+      .map(|key| {
+        self
+          .md
+          .decode_map_key(&self.prefix, &key, self.only_last_key)
+      })
       .collect::<Result<Vec<_>, _>>()?;
     Ok(Dynamic::from(result))
   }
@@ -101,7 +105,9 @@ impl StorageKeysPaged {
       .into_iter()
       .zip(&keys)
       .map(|(val, key)| -> Result<Dynamic, Box<EvalAltResult>> {
-        let key = self.md.decode_map_key(&self.prefix, &key, self.only_last_key)?;
+        let key = self
+          .md
+          .decode_map_key(&self.prefix, &key, self.only_last_key)?;
         let value = match val {
           Some(val) => self.md.decode_value(val.0)?,
           None => Dynamic::UNIT,
@@ -225,21 +231,20 @@ impl Storage {
     prefix: StorageKey,
     only_last_key: bool,
   ) -> Result<StorageKeysPaged, Box<EvalAltResult>> {
-    Ok(StorageKeysPaged::new(&self.client, &md, prefix, only_last_key))
+    Ok(StorageKeysPaged::new(
+      &self.client,
+      &md,
+      prefix,
+      only_last_key,
+    ))
   }
 
-  fn get_pallet_version_key(
-    &self,
-    mod_name: &str,
-  ) -> StorageKey {
+  fn get_pallet_version_key(&self, mod_name: &str) -> StorageKey {
     let key = storage_prefix(mod_name.as_bytes(), STORAGE_VERSION_STORAGE_KEY_POSTFIX);
     StorageKey(key.to_vec())
   }
 
-  pub fn get_pallet_version(
-    &mut self,
-    mod_name: &str,
-  ) -> Result<Dynamic, Box<EvalAltResult>> {
+  pub fn get_pallet_version(&mut self, mod_name: &str) -> Result<Dynamic, Box<EvalAltResult>> {
     let key = self.get_pallet_version_key(mod_name);
     self.get_u16_by_key(key, None)
   }
@@ -384,7 +389,10 @@ pub fn init_engine(engine: &mut Engine, client: &Client, metadata: &Metadata) ->
       Storage::new(client.clone(), &metadata)
     })
     .register_result_fn("pallet_version", Storage::get_pallet_version)
-    .register_result_fn("pallet_version_at_block", Storage::get_pallet_version_at_block)
+    .register_result_fn(
+      "pallet_version_at_block",
+      Storage::get_pallet_version_at_block,
+    )
     .register_result_fn("value", Storage::get_value)
     .register_result_fn("value_at_block", Storage::get_value_at_block)
     .register_result_fn("value_at_blocks", Storage::get_value_at_blocks)

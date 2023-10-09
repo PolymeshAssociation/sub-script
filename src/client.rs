@@ -4,12 +4,12 @@ use std::convert::TryFrom;
 use std::sync::{Arc, RwLock};
 
 use parity_scale_codec::{Compact, Decode, Encode};
+use sp_core::crypto::Ss58Codec;
 use sp_core::{
   crypto::{set_default_ss58_version, Ss58AddressFormat},
   storage::{StorageData, StorageKey},
   Pair,
 };
-use sp_core::crypto::Ss58Codec;
 use sp_runtime::{generic::Era, MultiSignature};
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,10 @@ use serde_json::{json, Value};
 
 use dashmap::DashMap;
 
-use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
+use rust_decimal::{
+  prelude::{FromPrimitive, ToPrimitive},
+  Decimal,
+};
 
 use rhai::serde::{from_dynamic, to_dynamic};
 use rhai::{Dynamic, Engine, EvalAltResult, ImmutableString, INT};
@@ -26,7 +29,7 @@ pub use crate::block::*;
 use crate::metadata::{EncodedCall, Metadata};
 use crate::rpc::*;
 use crate::types::{TypeLookup, TypeRef, TypesRegistry};
-use crate::users::{AccountId, User, SharedUser};
+use crate::users::{AccountId, SharedUser, User};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -396,11 +399,7 @@ impl InnerClient {
     Ok((token, xthex))
   }
 
-  pub fn sign_call(
-    &self,
-    user: &User,
-    call: EncodedCall,
-  ) -> String {
+  pub fn sign_call(&self, user: &User, call: EncodedCall) -> String {
     let extra = Extra::new(Era::Immortal, user.nonce);
     let payload = SignedPayload::new(&call, &extra, self.get_signed_extra());
 
@@ -581,11 +580,7 @@ impl Client {
     self.call_results(self.inner.submit(xthex))
   }
 
-  pub fn sign_call(
-    &self,
-    user: &User,
-    call: EncodedCall,
-  ) -> String {
+  pub fn sign_call(&self, user: &User, call: EncodedCall) -> String {
     self.inner.sign_call(user, call)
   }
 
@@ -909,9 +904,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       };
       log::debug!("Balance = {}", val);
       Ok(match Decimal::from_u128(val) {
-        Some(val) => {
-          Dynamic::from_decimal(val / Decimal::from(balance_scale))
-        }
+        Some(val) => Dynamic::from_decimal(val / Decimal::from(balance_scale)),
         None => {
           // TODO: create `Balance` type wrapper.
           Dynamic::from(val)

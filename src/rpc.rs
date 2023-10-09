@@ -461,19 +461,25 @@ impl InnerRpcConnectionPool {
   // Round-robin selection of the next connection.
   fn get_send_next_id(&self) -> ConnectionId {
     let count = self.connections.len() as u16;
-    self.send_next_id.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
-      let next = id + 1;
-      if next >= count {
-        Some(0)
-      } else {
-        Some(next)
-      }
-    }).unwrap_or_default() as ConnectionId
+    self
+      .send_next_id
+      .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
+        let next = id + 1;
+        if next >= count {
+          Some(0)
+        } else {
+          Some(next)
+        }
+      })
+      .unwrap_or_default() as ConnectionId
   }
 
   fn spawn_new_connection(&self) -> Result<(), Box<EvalAltResult>> {
     let id = self.get_next_id();
-    eprintln!("--- spawn_new_connection: id={id:?}, len={}", self.connections.len());
+    eprintln!(
+      "--- spawn_new_connection: id={id:?}, len={}",
+      self.connections.len()
+    );
     let conn = RpcConnection::new(id, &self.url)?;
     conn.spawn().map_err(|e| e.to_string())?;
     self.connections.insert(id, conn);
@@ -481,7 +487,10 @@ impl InnerRpcConnectionPool {
   }
 
   pub fn spawn_min_connections(&self, min: usize) -> Result<(), Box<EvalAltResult>> {
-    eprintln!("--- spawn_min_connections: min={min:?}, len={}", self.connections.len());
+    eprintln!(
+      "--- spawn_min_connections: min={min:?}, len={}",
+      self.connections.len()
+    );
     while self.connections.len() < min {
       self.spawn_new_connection()?;
     }

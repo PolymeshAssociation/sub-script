@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
@@ -626,12 +626,18 @@ impl TypeMeta {
                 }
               }
             } else {
-              Err(format!("Expected array of 2 values, got {:?}", value.type_id()))?;
+              Err(format!(
+                "Expected array of 2 values, got {:?}",
+                value.type_id()
+              ))?;
             }
           }
           data.encode(map);
         } else {
-          Err(format!("Expected an array of (key, value) pairs, got {:?}", value.type_id()))?;
+          Err(format!(
+            "Expected an array of (key, value) pairs, got {:?}",
+            value.type_id()
+          ))?;
         }
       }
       TypeMeta::Slice(len, type_ref) => {
@@ -1341,7 +1347,10 @@ impl Types {
             .cloned()
             .expect("Failed to resolve Composite field type");
           if let Some(type_ref) = f.type_name().and_then(|t| self.types.get(t)) {
-            log::trace!(" -- Field[{name}]: use type_name={}", f.type_name().unwrap());
+            log::trace!(
+              " -- Field[{name}]: use type_name={}",
+              f.type_name().unwrap()
+            );
             fields.insert(name.to_string(), type_ref.clone());
           } else {
             fields.insert(name.to_string(), field_ty);
@@ -1390,7 +1399,11 @@ impl Types {
               Some(TypeMeta::Struct(fields).into()),
             );
           } else if fields.len() == 1 {
-            variants.insert_at(var.index(), var.name(), fields.first().map(|(_, ty)| ty.clone()));
+            variants.insert_at(
+              var.index(),
+              var.name(),
+              fields.first().map(|(_, ty)| ty.clone()),
+            );
           } else {
             variants.insert_at(
               var.index(),
@@ -1467,7 +1480,12 @@ impl Types {
     for ty in types.types() {
       let name = get_type_name(ty.ty(), types, true);
       let short_name = get_type_name(ty.ty(), types, false);
-      log::debug!("import_v14_type: {:?} => {} ({})", ty.id(), name, short_name);
+      log::debug!(
+        "import_v14_type: {:?} => {} ({})",
+        ty.id(),
+        name,
+        short_name
+      );
       let type_ref = self.resolve(&name);
 
       // Try mapping short name to full name.

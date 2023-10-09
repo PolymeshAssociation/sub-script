@@ -29,8 +29,7 @@ pub fn init_engine(
 ) -> Result<(), Box<EvalAltResult>> {
   engine
     .register_type_with_name::<UtilsPlugin>("UtilsPlugin")
-    .register_result_fn("write_hex_to_file", UtilsPlugin::write_hex_to_file)
-    ;
+    .register_result_fn("write_hex_to_file", UtilsPlugin::write_hex_to_file);
 
   let plugin = UtilsPlugin::new()?;
   globals.insert("Utils".into(), Dynamic::from(plugin.clone()));

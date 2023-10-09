@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use rhai::{Dynamic, INT, Engine, EvalAltResult};
+use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
-use postgres::{Client, Statement, NoTls};
-use postgres::types::{accepts, to_sql_checked, ToSql, IsNull, Type};
+use postgres::types::{accepts, to_sql_checked, IsNull, ToSql, Type};
+use postgres::{Client, NoTls, Statement};
 
 use serde_json::Value;
 
@@ -18,7 +18,11 @@ impl DynamicToSql {
 }
 
 impl ToSql for DynamicToSql {
-  fn to_sql(&self, ty: &Type, out: &mut bytes::BytesMut) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+  fn to_sql(
+    &self,
+    ty: &Type,
+    out: &mut bytes::BytesMut,
+  ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
     if self.0.is::<()>() {
       Ok(IsNull::Yes)
     } else {
@@ -70,7 +74,10 @@ impl ToSql for DynamicToSql {
           val.to_sql(ty, out)?;
         }
         _ => {
-          Err(format!("Unsupported Dynamic -> ToSql type={:?}, value={:?}", ty, self.0))?;
+          Err(format!(
+            "Unsupported Dynamic -> ToSql type={:?}, value={:?}",
+            ty, self.0
+          ))?;
         }
       }
       Ok(IsNull::No)
@@ -100,10 +107,19 @@ impl PgClient {
     Ok(stmt)
   }
 
-  pub fn execute(&mut self, stmt: Statement, params: Vec<Dynamic>) -> Result<INT, Box<EvalAltResult>> {
+  pub fn execute(
+    &mut self,
+    stmt: Statement,
+    params: Vec<Dynamic>,
+  ) -> Result<INT, Box<EvalAltResult>> {
     let d_params: Vec<DynamicToSql> = params.into_iter().map(|d| DynamicToSql(d)).collect();
     let s_params: Vec<&(dyn ToSql + Sync)> = d_params.iter().map(|d| d.borrow_to_sql()).collect();
-    let res = self.0.lock().unwrap().execute(&stmt, s_params.as_slice()).map_err(into_err)?;
+    let res = self
+      .0
+      .lock()
+      .unwrap()
+      .execute(&stmt, s_params.as_slice())
+      .map_err(into_err)?;
     Ok(res as INT)
   }
 }
@@ -133,8 +149,7 @@ pub fn init_engine(
     .register_type_with_name::<PgClient>("PgClient")
     .register_result_fn("prepare", PgClient::prepare)
     .register_result_fn("execute", PgClient::execute)
-    .register_type_with_name::<Statement>("PgStatement")
-    ;
+    .register_type_with_name::<Statement>("PgStatement");
 
   let plugin = PostgresPlugin::new()?;
   globals.insert("Postgres".into(), Dynamic::from(plugin.clone()));
