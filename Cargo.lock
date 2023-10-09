@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "confidential_assets"
 version = "1.0.0"
-source = "git+ssh://git@github.com/PolymeshAssociation/confidential_assets.git?branch=main#f68a143dc3ce64b9f2ff99e52a68f1fe979e1f30"
+source = "git+ssh://git@github.com/PolymeshAssociation/confidential_assets.git?branch=main#a70d828e36093bc17b3e28305b2b866f49391884"
 dependencies = [
  "bincode",
  "bulletproofs",
@@ -4271,9 +4271,9 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 1.0.0",
+ "cfg-if 0.1.10",
  "digest 0.10.3",
- "rand 0.8.5",
+ "rand 0.7.3",
  "static_assertions",
 ]
 

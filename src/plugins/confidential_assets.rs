@@ -8,7 +8,7 @@ use confidential_assets::{
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use std::any::TypeId;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
@@ -126,7 +126,7 @@ impl ConfidentialAssetsUtils {
     &mut self,
     sender: ElgamalKeys,
     receiver: ElgamalPublicKey,
-    mediator: ElgamalPublicKey,
+    auditors: Dynamic,
     amount: Dynamic,
     pending_enc_balance: CipherText,
     pending_balance: Dynamic,
@@ -135,13 +135,18 @@ impl ConfidentialAssetsUtils {
 
     let pending_balance = to_balance(pending_balance)?;
     let amount = to_balance(amount)?;
+    // Sort auditors.
+    let mut auditors = auditors.into_typed_array::<ElgamalPublicKey>()?;
+    auditors.sort();
+    // assign AuditorIds to each auditor.
+    let auditors = auditors.into_iter().enumerate().map(|(idx, key)| (AuditorId(idx as _), key)).collect();
     // Create sender proof.
     let init_tx = ConfidentialTransferProof::new(
         &sender,
         &pending_enc_balance,
         pending_balance,
         &receiver,
-        &BTreeMap::from([(AuditorId(0), mediator)]),
+        &auditors,
         amount,
         &mut rng,
       )
@@ -201,9 +206,9 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
   types_registry.add_init(|types, _rpc, _hash| {
     init_vec_encoded::<CipherText>("confidential_assets::CipherText", types)?;
     init_vec_encoded::<ConfidentialTransferProof>("pallet_confidential_asset::SenderProof", types)?;
-    // Don't use vec wrapper for `MercatAccount` or `CipherText`.
+    // Don't use vec wrapper for `ConfidentialAccount` or `CipherText`.
     types.custom_encode(
-      "pallet_confidential_asset::MercatAccount",
+      "pallet_confidential_asset::ConfidentialAccount",
       TypeId::of::<ElgamalPublicKey>(),
       move |value, data| {
         let val = value.cast::<ElgamalPublicKey>();
@@ -212,7 +217,22 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       },
     )?;
     types.custom_decode(
-      "pallet_confidential_asset::MercatAccount",
+      "pallet_confidential_asset::ConfidentialAccount",
+      |mut input, _is_compact| {
+        Ok(Dynamic::from(ElgamalPublicKey::decode(&mut input)?))
+      }
+    )?;
+    types.custom_encode(
+      "pallet_confidential_asset::MediatorAccount",
+      TypeId::of::<ElgamalPublicKey>(),
+      move |value, data| {
+        let val = value.cast::<ElgamalPublicKey>();
+        data.encode(val);
+        Ok(())
+      },
+    )?;
+    types.custom_decode(
+      "pallet_confidential_asset::MediatorAccount",
       |mut input, _is_compact| {
         Ok(Dynamic::from(ElgamalPublicKey::decode(&mut input)?))
       }

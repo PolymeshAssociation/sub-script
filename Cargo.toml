@@ -133,6 +133,13 @@ mercat = [
 	"confidential_identity_core",
 ]
 
+# Confidential assets
+confidential_assets = [
+	"dep:confidential_assets",
+	"rayon",
+	"discrete_log",
+]
+
 # Faster Elgamal decryption.
 rayon = [
 	"confidential_identity_core?/rayon",
