@@ -631,18 +631,39 @@ fn create_settlement(exchange, venue_id, orders, sides) {
 		s_type = #{ SettleManual: 0 };
 		is_manual = true;
 	}
+	let side_counts = [];
+	for side in sides {
+		side_counts += #{
+			sender_asset_count: #{
+				fungible: 0,
+				non_fungible: 0,
+				off_chain: 0,
+			},
+			receiver_asset_count: #{
+				fungible: 0,
+				non_fungible: 0,
+				off_chain: 0,
+			},
+			offchain_count: 0,
+		};
+	}
 	// Create settlements.
 	let legs = [];
 	for order in orders {
 		let sender = sides[order.sender];
 		let receiver = sides[order.receiver];
 		legs.push(fungible_leg(sender.portfolio, receiver.portfolio, order.ticker, order.amount));
+
+		// Track asset counts.
+		side_counts[order.sender].sender_asset_count.fungible += 1;
+		side_counts[order.receiver].receiver_asset_count.fungible += 1;
 	}
 	let res = exchange.submit(call_settlement_add(venue_id, s_type, legs, ()));
 	return #{
 		res: res,
 		leg_count: legs.len(),
 		sides: sides,
+		side_counts: side_counts,
 		venue_user: exchange,
 		is_manual: is_manual,
 	};
@@ -682,9 +703,13 @@ fn affirm_settlement(settlement) {
 
 	// Each side affirms the settlement.
 	let leg_count = settlement.leg_count;
-	for side in settlement.sides {
+	let side_counts = settlement.side_counts;
+	for (side, idx) in settlement.sides {
 		if global::SPEC_VERSION < 6000000 {
 			results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio], leg_count));
+		} else if side_counts != () {
+			let counts = side_counts[idx];
+			results += side.user.submit(Settlement.affirm_instruction_with_count(instruction_id, [side.portfolio], counts));
 		} else {
 			results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio]));
 		}
@@ -711,7 +736,7 @@ fn execute_settlement(settlement) {
 		// manual execution not supported.
 		return [];
 	}
-	// Each side affirms the settlement.
+	// Execute the settlement.
 	if global::SPEC_VERSION < 6000000 {
 		return settlement.venue_user.submit(
 			Settlement.execute_manual_instruction(instruction_id, settlement.leg_count, ())
