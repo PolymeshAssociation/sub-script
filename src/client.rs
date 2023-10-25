@@ -385,7 +385,6 @@ impl InnerClient {
         }
       }
     };
-    self.rpc.close_request(token)?;
 
     Ok(hash)
   }
