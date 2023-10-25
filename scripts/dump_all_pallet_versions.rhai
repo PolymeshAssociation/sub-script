@@ -36,7 +36,13 @@ fn dump_versions(spec, metadata, block) {
 	for mod in mods {
 		let mod_name = mod.name;
 		for storage in mod.storage {
-			if storage.name == "StorageVersion" {
+			if storage.name == "StorageVersion" && mod_name != "Staking" {
+				let version = mt_STORAGE.value_at_block(mod_name, storage.name, block);
+				if version > 0 {
+					print(`${mod_name}: version=${version}`);
+				}
+			}
+			if storage.name == "PolymeshStorageVersion" {
 				let version = mt_STORAGE.value_at_block(mod_name, storage.name, block);
 				if version > 0 {
 					print(`${mod_name}: version=${version}`);
