@@ -558,7 +558,7 @@ fn call_settlement_add_and_affirm(venue_id, s_type, legs, portfolios, memo) {
 	}
 }
 
-fn call_settlement_add(venue_id, s_type, legs, portfolios, memo) {
+fn call_settlement_add(venue_id, s_type, legs, memo) {
 	if global::SPEC_VERSION < 6000000 {
 		return Settlement.add_instruction(venue_id, s_type, (), (), legs);
 	} else {
