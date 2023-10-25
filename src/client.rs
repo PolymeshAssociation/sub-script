@@ -778,25 +778,14 @@ impl ExtrinsicCallResult {
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, rpc, _hash| {
     // Custom encodings.
-    types.custom_encode("Era", TypeId::of::<Era>(), |value, data| {
-      let era = value.cast::<Era>();
-      data.encode(era);
-      Ok(())
-    })?;
-    types.custom_decode("Era", |mut input, _is_compact| {
-      let era = Era::decode(&mut input)?;
-      Ok(Dynamic::from(era))
-    })?;
+    types.register_scale_type::<Era>("Era")?;
 
     types.custom_encode("AccountId32", TypeId::of::<SharedUser>(), |value, data| {
       let user = value.cast::<SharedUser>();
       data.encode(user.public());
       Ok(())
     })?;
-    types.custom_encode("AccountId32", TypeId::of::<AccountId>(), |value, data| {
-      data.encode(value.cast::<AccountId>());
-      Ok(())
-    })?;
+    types.register_scale_type::<AccountId>("AccountId32")?;
     types.custom_encode(
       "AccountId32",
       TypeId::of::<ImmutableString>(),
@@ -807,9 +796,6 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
         Ok(())
       },
     )?;
-    types.custom_decode("AccountId32", |mut input, _is_compact| {
-      Ok(Dynamic::from(AccountId::decode(&mut input)?))
-    })?;
 
     types.custom_encode("MultiAddress", TypeId::of::<SharedUser>(), |value, data| {
       let user = value.cast::<SharedUser>();

@@ -100,6 +100,8 @@ print(`mock_cdd.encoded: ${encoded}, len: ${encoded.len()}`);
 
 let ty = Types.resolve("AccountId");
 print(`AccountId: ${ty}`);
+let ty = Types.resolve("IdentityId");
+print(`IdentityId: ${ty}`);
 let ty = Types.resolve("AccountId32");
 print(`AccountId32: ${ty}`);
 let ty = Types.resolve("sp_core::crypto::AccountId32");

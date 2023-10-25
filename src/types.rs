@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::{Arc, RwLock};
 
-use parity_scale_codec::{Compact, Decode, Error as PError, Input};
+use parity_scale_codec::{Compact, Encode, Decode, Error as PError, Input};
 use serde_json::{json, Map, Value};
 
 #[cfg(feature = "v14")]
@@ -907,8 +907,10 @@ impl TypeMeta {
       TypeMeta::Struct(fields) => {
         let mut map = RMap::new();
         for (name, type_ref) in fields {
-          log::debug!("decode Struct field: {}", name);
-          map.insert(name.into(), type_ref.decode_value(input, false)?);
+          log::debug!("decode Struct field: {}({:?})", name, type_ref);
+          let value = type_ref.decode_value(input, false)?;
+          log::trace!("  -- field: {:?}", value);
+          map.insert(name.into(), value);
         }
         Dynamic::from(map)
       }
@@ -920,7 +922,9 @@ impl TypeMeta {
             log::debug!("decode Enum variant: {}", name);
             let mut map = RMap::new();
             if let Some(type_ref) = &variant.type_ref {
-              map.insert(name.into(), type_ref.decode_value(input, false)?);
+              let value = type_ref.decode_value(input, false)?;
+              log::trace!("  -- variant: {:?}", value);
+              map.insert(name.into(), value);
             } else {
               map.insert(name.into(), Dynamic::UNIT);
             }
@@ -939,7 +943,9 @@ impl TypeMeta {
         }
       }
 
-      TypeMeta::Compact(type_ref) => type_ref.decode_value(input, true)?,
+      TypeMeta::Compact(type_ref) => {
+        type_ref.decode_value(input, true)?
+      }
       TypeMeta::Box(type_ref) | TypeMeta::NewType(_, type_ref) => {
         type_ref.decode_value(input, is_compact)?
       }
@@ -1270,6 +1276,7 @@ impl Types {
     match entry {
       Entry::Occupied(entry) => {
         let old_ref = entry.get();
+        log::trace!("types.insert: resolve old type[{}]: {:?}", name, type_ref);
         let mut old_meta = old_ref.0.write().unwrap();
         // Already exists.  Check that it is a `TypeMeta::Unresolved`.
         match &*old_meta {
@@ -1282,6 +1289,7 @@ impl Types {
         old_ref.clone()
       }
       Entry::Vacant(entry) => {
+        log::trace!("types.insert: new type[{}]: {:?}", name, type_ref);
         entry.insert(type_ref.clone());
         type_ref
       }
@@ -1346,15 +1354,7 @@ impl Types {
             .get(&f.ty().id())
             .cloned()
             .expect("Failed to resolve Composite field type");
-          if let Some(type_ref) = f.type_name().and_then(|t| self.types.get(t)) {
-            log::trace!(
-              " -- Field[{name}]: use type_name={}",
-              f.type_name().unwrap()
-            );
-            fields.insert(name.to_string(), type_ref.clone());
-          } else {
-            fields.insert(name.to_string(), field_ty);
-          }
+          fields.insert(name.to_string(), field_ty);
         }
         TypeMeta::Struct(fields)
       }
@@ -1538,6 +1538,7 @@ impl Types {
   {
     let func = WrapEncodeFn(Arc::new(func));
     let type_ref = self.parse_type(name)?;
+    log::trace!("custom_encode: {type_ref:?}");
     type_ref.custom_encode(type_id, func);
     Ok(())
   }
@@ -1549,6 +1550,37 @@ impl Types {
     let func = WrapDecodeFn(Arc::new(func));
     let type_ref = self.parse_type(name)?;
     type_ref.custom_decode(func);
+    Ok(())
+  }
+
+  pub fn register_scale_type<T>(&mut self, name: &str) -> Result<(), Box<EvalAltResult>>
+  where
+    T: 'static + Encode + Decode + Clone + Send + Sync
+  {
+    self.custom_encode(name, TypeId::of::<T>(), |value, data| {
+      data.encode(value.cast::<T>());
+      Ok(())
+    })?;
+    self.custom_decode(name, |mut input, _is_compact| {
+      Ok(Dynamic::from(T::decode(&mut input)?))
+    })?;
+    Ok(())
+  }
+
+  pub fn vec_encoded<T>(&mut self, name: &str) -> Result<(), Box<EvalAltResult>>
+  where
+    T: 'static + Encode + Decode + Clone + Send + Sync
+  {
+    self.custom_encode(name, TypeId::of::<T>(), move |value, data| {
+      let val = value.cast::<T>();
+      let encoded = val.encode();
+      data.encode(encoded);
+      Ok(())
+    })?;
+    self.custom_decode(name, |mut input, _is_compact| {
+      let encoded = Vec::decode(&mut input)?;
+      Ok(Dynamic::from(T::decode(&mut encoded.as_slice())?))
+    })?;
     Ok(())
   }
 }

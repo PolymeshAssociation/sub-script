@@ -18,7 +18,7 @@ use rust_decimal::{
 
 use crate::client::Client;
 use crate::rpc::RpcHandler;
-use crate::types::{Types, TypesRegistry};
+use crate::types::TypesRegistry;
 
 pub fn to_balance(val: Dynamic) -> Result<Balance, Box<EvalAltResult>> {
   let type_id = val.type_id();
@@ -174,23 +174,6 @@ impl ConfidentialAssetsUtils {
   }
 }
 
-pub fn init_vec_encoded<T: Decode + Encode + Clone + Send + Sync + 'static>(
-  name: &str,
-  types: &mut Types,
-) -> Result<(), Box<EvalAltResult>> {
-  types.custom_encode(name, TypeId::of::<T>(), move |value, data| {
-    let val = value.cast::<T>();
-    let encoded = val.encode();
-    data.encode(encoded);
-    Ok(())
-  })?;
-  types.custom_decode(name, |mut input, _is_compact| {
-    let encoded = Vec::decode(&mut input)?;
-    Ok(Dynamic::from(T::decode(&mut encoded.as_slice())?))
-  })?;
-  Ok(())
-}
-
 pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
   let encoded = hex::encode(val.encode());
   format!("0x{encoded}")
@@ -198,60 +181,12 @@ pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
-    init_vec_encoded::<CipherText>("confidential_assets::CipherText", types)?;
-    init_vec_encoded::<ConfidentialTransferProof>("pallet_confidential_asset::SenderProof", types)?;
+    types.vec_encoded::<ConfidentialTransferProof>("pallet_confidential_asset::SenderProof")?;
     // Don't use vec wrapper for `ConfidentialAccount` or `CipherText`.
-    types.custom_encode(
-      "pallet_confidential_asset::ConfidentialAccount",
-      TypeId::of::<ElgamalPublicKey>(),
-      move |value, data| {
-        let val = value.cast::<ElgamalPublicKey>();
-        data.encode(val);
-        Ok(())
-      },
-    )?;
-    types.custom_decode(
-      "pallet_confidential_asset::ConfidentialAccount",
-      |mut input, _is_compact| Ok(Dynamic::from(ElgamalPublicKey::decode(&mut input)?)),
-    )?;
-    types.custom_encode(
-      "pallet_confidential_asset::MediatorAccount",
-      TypeId::of::<ElgamalPublicKey>(),
-      move |value, data| {
-        let val = value.cast::<ElgamalPublicKey>();
-        data.encode(val);
-        Ok(())
-      },
-    )?;
-    types.custom_decode(
-      "pallet_confidential_asset::MediatorAccount",
-      |mut input, _is_compact| Ok(Dynamic::from(ElgamalPublicKey::decode(&mut input)?)),
-    )?;
-    types.custom_encode(
-      "confidential_assets::elgamal::CipherText",
-      TypeId::of::<CipherText>(),
-      move |value, data| {
-        let val = value.cast::<CipherText>();
-        data.encode(val);
-        Ok(())
-      },
-    )?;
-    types.custom_decode(
-      "confidential_assets::elgamal::CipherText",
-      |mut input, _is_compact| Ok(Dynamic::from(CipherText::decode(&mut input)?)),
-    )?;
-    types.custom_encode(
-      "CipherText",
-      TypeId::of::<CipherText>(),
-      move |value, data| {
-        let val = value.cast::<CipherText>();
-        data.encode(val);
-        Ok(())
-      },
-    )?;
-    types.custom_decode("CipherText", |mut input, _is_compact| {
-      Ok(Dynamic::from(CipherText::decode(&mut input)?))
-    })?;
+    types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::ConfidentialAccount")?;
+    types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::MediatorAccount")?;
+    types.register_scale_type::<CipherText>("pallet_confidential_asset::elgamal::CipherText")?;
+    types.register_scale_type::<CipherText>("CipherText")?;
 
     Ok(())
   });

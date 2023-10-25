@@ -9,8 +9,6 @@ use polymesh_primitives::{
 };
 use polymesh_primitives::{Claim, IdentityId, Ticker};
 
-use parity_scale_codec::Decode;
-
 use sp_runtime::MultiSignature;
 
 use crate::client::Client;
@@ -111,25 +109,8 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
       data.encode(user.public());
       Ok(())
     })?;
-    types.custom_encode("IdentityId", TypeId::of::<IdentityId>(), |value, data| {
-      data.encode(value.cast::<IdentityId>());
-      Ok(())
-    })?;
-    types.custom_decode("IdentityId", |mut input, _is_compact| {
-      Ok(Dynamic::from(IdentityId::decode(&mut input)?))
-    })?;
-    types.custom_encode(
-      "polymesh_primitives::identity_id::IdentityId",
-      TypeId::of::<IdentityId>(),
-      |value, data| {
-        data.encode(value.cast::<IdentityId>());
-        Ok(())
-      },
-    )?;
-    types.custom_decode(
-      "polymesh_primitives::identity_id::IdentityId",
-      |mut input, _is_compact| Ok(Dynamic::from(IdentityId::decode(&mut input)?)),
-    )?;
+    types.register_scale_type::<IdentityId>("IdentityId")?;
+    types.register_scale_type::<IdentityId>("polymesh_primitives::identity_id::IdentityId")?;
     types.custom_encode("Ticker", TypeId::of::<ImmutableString>(), |value, data| {
       let value = value.cast::<ImmutableString>();
       let ticker = str_to_ticker(value.as_str())?;
@@ -146,34 +127,12 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
         Ok(())
       },
     )?;
-    types.custom_encode("Claim", TypeId::of::<Claim>(), |value, data| {
-      data.encode(value.cast::<Claim>());
-      Ok(())
-    })?;
-    types.custom_decode("Claim", |mut input, _is_compact| {
-      Ok(Dynamic::from(Claim::decode(&mut input)?))
-    })?;
+    types.register_scale_type::<Claim>("Claim")?;
+
     #[cfg(feature = "confidential_identity")]
-    types.custom_encode(
-      "InvestorZKProofData",
-      TypeId::of::<v1::InvestorZKProofData>(),
-      |value, data| {
-        data.encode(value.cast::<v1::InvestorZKProofData>());
-        Ok(())
-      },
-    )?;
-    #[cfg(feature = "confidential_identity")]
-    types.custom_decode("InvestorZKProofData", |mut input, _is_compact| {
-      Ok(Dynamic::from(v1::InvestorZKProofData::decode(&mut input)?))
-    })?;
-    types.custom_encode(
-      "OffChainSignature",
-      TypeId::of::<MultiSignature>(),
-      |value, data| {
-        data.encode(value.cast::<MultiSignature>());
-        Ok(())
-      },
-    )?;
+    types.register_scale_type::<v1::InvestorZKProofData>("InvestorZKProofData")?;
+
+    types.register_scale_type::<MultiSignature>("OffChainSignature")?;
     types.custom_encode("H512", TypeId::of::<MultiSignature>(), |value, data| {
       let sig = value.cast::<MultiSignature>();
       match sig {
