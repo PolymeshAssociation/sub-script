@@ -9,7 +9,7 @@ use parity_scale_codec::{Compact, Encode, Decode, Error as PError, Input};
 use serde_json::{json, Map, Value};
 
 #[cfg(feature = "v14")]
-use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
+use scale_info::{Field, form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
@@ -244,6 +244,14 @@ impl CustomType {
     }
   }
 
+  pub fn is_compact(&self) -> bool {
+    self.type_meta.is_compact()
+  }
+
+  pub fn is_u8(&self) -> bool {
+    self.type_meta.is_u8()
+  }
+
   pub fn custom_encode(&mut self, type_id: TypeId, func: WrapEncodeFn) {
     self.encode_map.insert(type_id, func);
   }
@@ -329,12 +337,12 @@ impl TypeRef {
     self.decode(data)
   }
 
+  pub fn is_compact(&self) -> bool {
+    self.0.read().unwrap().is_compact()
+  }
+
   pub fn is_u8(&self) -> bool {
-    let self_meta = self.0.read().unwrap();
-    match &*self_meta {
-      TypeMeta::Integer(1, false) => true,
-      _ => false,
-    }
+    self.0.read().unwrap().is_u8()
   }
 }
 
@@ -426,6 +434,27 @@ impl Default for TypeMeta {
 impl TypeMeta {
   fn to_string(&mut self) -> String {
     format!("TypeMeta: {:?}", self)
+  }
+
+  pub fn is_compact(&self) -> bool {
+    match self {
+      Self::Option(ty) => ty.is_compact(),
+      Self::Box(ty) => ty.is_compact(),
+      Self::Compact(_) => true,
+      Self::NewType(_, ty) => ty.is_compact(),
+      Self::CustomType(ty) => ty.is_compact(),
+      _ => false
+    }
+  }
+
+  pub fn is_u8(&self) -> bool {
+    match self {
+      Self::Integer(1, _) => true,
+      Self::Box(ty) => ty.is_u8(),
+      Self::NewType(_, ty) => ty.is_u8(),
+      Self::CustomType(ty) => ty.is_u8(),
+      _ => false,
+    }
   }
 
   fn make_custom_type(&mut self) {
@@ -1297,6 +1326,32 @@ impl Types {
   }
 
   #[cfg(feature = "v14")]
+  fn v14_resolve_field(
+    &mut self,
+    field: &Field<PortableForm>,
+    id_to_ref: &HashMap<u32, TypeRef>,
+  ) -> Result<TypeRef, Box<EvalAltResult>> {
+    let mut field_ty = id_to_ref
+      .get(&field.ty().id())
+      .cloned()
+      .ok_or_else(|| format!("Failed to resolve field type."))?;
+    // Check for `Balance` fields.
+    if let Some(type_name) = field.type_name() {
+      let name = match (type_name.as_str(), field_ty.is_compact()) {
+        ("Balance", false) => Some("Balance"),
+        ("Balance", true) => Some("Compact<Balance>"),
+        ("Option<Balance>", false) => Some("Option<Balance>"),
+        ("Option<Balance>", true) => Some("Option<Compact<Balance>>"),
+        _ => None,
+      };
+      if let Some(name) = name {
+        field_ty = self.parse_type(name)?;
+      }
+    }
+    Ok(field_ty)
+  }
+
+  #[cfg(feature = "v14")]
   fn import_v14_type(
     &mut self,
     id: u32,
@@ -1331,9 +1386,7 @@ impl Types {
         // Special handling of tuples.
         log::debug!("import_v14_type: Tuple: variants={:#?}", s.fields());
         let ty_param = &s.fields()[0];
-        let elm_ty = id_to_ref
-          .get(&ty_param.ty().id())
-          .cloned()
+        let elm_ty = self.v14_resolve_field(ty_param, id_to_ref)
           .expect("Failed to resolve Tuple field");
         TypeMeta::NewType(ty.path().ident().unwrap_or_else(|| "unamed".into()), elm_ty)
       }
@@ -1350,9 +1403,7 @@ impl Types {
             Some(prefix) => format!("{prefix}_{idx}"),
             None => format!("unamed_{idx}"),
           });
-          let field_ty = id_to_ref
-            .get(&f.ty().id())
-            .cloned()
+          let field_ty = self.v14_resolve_field(f, id_to_ref)
             .expect("Failed to resolve Composite field type");
           fields.insert(name.to_string(), field_ty);
         }
@@ -1362,9 +1413,7 @@ impl Types {
         log::debug!("import_v14_type: Option: variants={:#?}", v.variants());
         // Special handling for `Option` types.
         let ty_param = &v.variants()[1].fields()[0];
-        let elm_ty = id_to_ref
-          .get(&ty_param.ty().id())
-          .cloned()
+        let elm_ty = self.v14_resolve_field(ty_param, id_to_ref)
           .expect("Failed to resolve Option type");
         TypeMeta::Option(elm_ty)
       }
@@ -1384,9 +1433,7 @@ impl Types {
               is_struct_variant = false;
               format!("unamed_{idx}")
             });
-            let field_ty = id_to_ref
-              .get(&f.ty().id())
-              .cloned()
+            let field_ty = self.v14_resolve_field(f, id_to_ref)
               .expect("Failed to resolve Enum variant field type");
             fields.insert(name.to_string(), field_ty);
           }
