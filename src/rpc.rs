@@ -619,6 +619,18 @@ impl RpcHandler {
     self.0.send(req)
   }
 
+  /// Consume the response to method call without decoding it.
+  pub fn consume_response(&self, token: RequestToken) -> Result<(), Box<EvalAltResult>> {
+    match self.0.get_response(token)? {
+      ResponseEvent::Reply(_) => Ok(()),
+      ResponseEvent::Update(_) => Err(format!(
+        "Got invalid subscription update event for an method call."
+      ))?,
+      ResponseEvent::Error(err) => Err(format!("{:?}", err))?,
+      ResponseEvent::Closed => Err(format!("Request closed without response."))?,
+    }
+  }
+
   /// Get response to method call.
   pub fn get_response<T: DeserializeOwned>(
     &self,
@@ -770,6 +782,13 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       },
     )
     .register_result_fn(
+      "consume_response",
+      |client: &mut RpcHandler, token: RequestToken| {
+        client.consume_response(token)?;
+        Ok(Dynamic::UNIT)
+      },
+    )
+    .register_result_fn(
       "get_response_as_runtime_version",
       |client: &mut RpcHandler, token: RequestToken| {
         let res = client.get_response::<RuntimeVersion>(token)?;
@@ -807,6 +826,20 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       },
     )
     .register_result_fn(
+      "get_response_as_signed_block",
+      |client: &mut RpcHandler, token: RequestToken| {
+        let res = client.get_response::<SignedBlock>(token)?;
+        Ok(res.map(|val| Dynamic::from(val)).unwrap_or(Dynamic::UNIT))
+      },
+    )
+    .register_result_fn(
+      "get_response_as_header",
+      |client: &mut RpcHandler, token: RequestToken| {
+        let res = client.get_response::<BlockHeader>(token)?;
+        Ok(res.map(|val| Dynamic::from(val)).unwrap_or(Dynamic::UNIT))
+      },
+    )
+    .register_result_fn(
       "get_update",
       |client: &mut RpcHandler, token: RequestToken| client.get_update::<Dynamic>(token),
     )
@@ -814,7 +847,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
       "get_update_as_header",
       |client: &mut RpcHandler, token: RequestToken| {
         let res = client.get_update::<BlockHeader>(token)?;
-        Ok(res.map(|rt| Dynamic::from(rt)).unwrap_or(Dynamic::UNIT))
+        Ok(res.map(|val| Dynamic::from(val)).unwrap_or(Dynamic::UNIT))
       },
     )
     .register_result_fn(
