@@ -90,6 +90,12 @@ pub fn get_type_name(ty: &Type<PortableForm>, types: &PortableRegistry, full: bo
         .expect("Failed to resolve Compact type");
       format!("Compact<{}>", get_type_name(elm_ty, types, full))
     }
+    TypeDef::BitSequence(s) => {
+      let elm_ty = types
+        .resolve(s.bit_store_type().id())
+        .expect("Failed to resolve bit sequence element type");
+      format!("BitVec<{}>", get_type_name(elm_ty, types, full))
+    }
     _ => {
       if full {
         format!("{}", ty.path())
@@ -373,6 +379,7 @@ pub enum TypeMeta {
   /// (ok, err)
   Result(TypeRef, TypeRef),
   Vector(TypeRef),
+  BitVector(TypeRef),
 
   BTreeSet(TypeRef),
   BTreeMap(TypeRef, TypeRef),
@@ -404,6 +411,7 @@ impl std::fmt::Debug for TypeMeta {
       Self::OptionBool => f.write_fmt(format_args!("OptionBool")),
       Self::Result(_, _) => f.write_fmt(format_args!("Result")),
       Self::Vector(_) => f.write_fmt(format_args!("Vector")),
+      Self::BitVector(_) => f.write_fmt(format_args!("BitVector")),
 
       Self::BTreeSet(_) => f.write_fmt(format_args!("BTreeSet")),
       Self::BTreeMap(_, _) => f.write_fmt(format_args!("BTreeMap")),
@@ -619,6 +627,9 @@ impl TypeMeta {
         } else {
           Err(format!("Expected a vector, got {:?}", value.type_id()))?;
         }
+      }
+      TypeMeta::BitVector(_type_ref) => {
+        todo!("BitVec");
       }
       TypeMeta::BTreeSet(type_ref) => {
         if value.is::<Array>() {
@@ -895,6 +906,9 @@ impl TypeMeta {
           vec.push(type_ref.decode_value(input, false)?);
         }
         Dynamic::from_array(vec)
+      }
+      TypeMeta::BitVector(_type_ref) => {
+        todo!("BitVec");
       }
       TypeMeta::BTreeSet(type_ref) => {
         let len = Compact::<u64>::decode(input)?.0;
@@ -1511,8 +1525,12 @@ impl Types {
           .expect("Failed to resolve Compact type");
         TypeMeta::Compact(elm_ty)
       }
-      _ => {
-        todo!("Handle TypeDef");
+      TypeDef::BitSequence(s) => {
+        let elm_ty = id_to_ref
+          .get(&s.bit_store_type().id())
+          .cloned()
+          .expect("Failed to resolve BitSequence element type");
+        TypeMeta::BitVector(elm_ty)
       }
     };
     // Resolve type.
