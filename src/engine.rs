@@ -173,6 +173,15 @@ impl TaskReceiver {
     }
   }
 
+  pub fn try_recv(&mut self) -> Dynamic {
+    let receiver = self.0.lock().unwrap();
+    if let Some(receiver) = &*receiver {
+      receiver.try_recv().unwrap_or(Dynamic::UNIT)
+    } else {
+      Dynamic::UNIT
+    }
+  }
+
   pub fn close(&mut self) {
     self.0.lock().unwrap().take();
   }
@@ -400,6 +409,7 @@ pub fn init_engine(opts: &EngineOptions) -> Result<SharedEngine, Box<EvalAltResu
     .register_fn("close", TaskSyncSender::close)
     .register_type_with_name::<TaskReceiver>("TaskReceiver")
     .register_fn("recv", TaskReceiver::recv)
+    .register_fn("try_recv", TaskReceiver::try_recv)
     .register_fn("close", TaskReceiver::close);
 
   Ok(SharedEngine::new(engine))
