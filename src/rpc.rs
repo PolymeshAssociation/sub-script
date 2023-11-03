@@ -476,19 +476,18 @@ impl InnerRpcConnectionPool {
 
   fn spawn_new_connection(&self) -> Result<(), Box<EvalAltResult>> {
     let id = self.get_next_id();
-    eprintln!(
-      "--- spawn_new_connection: id={id:?}, len={}",
+    log::debug!(
+      "spawn_new_connection: id={id:?}, len={}",
       self.connections.len()
     );
     let conn = RpcConnection::new(id, &self.url)?;
-    conn.spawn().map_err(|e| e.to_string())?;
     self.connections.insert(id, conn);
     Ok(())
   }
 
   pub fn spawn_min_connections(&self, min: usize) -> Result<(), Box<EvalAltResult>> {
-    eprintln!(
-      "--- spawn_min_connections: min={min:?}, len={}",
+    log::debug!(
+      "spawn_min_connections: min={min:?}, len={}",
       self.connections.len()
     );
     while self.connections.len() < min {
