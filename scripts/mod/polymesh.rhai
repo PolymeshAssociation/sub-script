@@ -161,22 +161,100 @@ fn get_cdd_provider() {
 	return provider;
 }
 
+fn cut_head(size) {
+	let len = this.len();
+	if len < size {
+		size = len;
+	}
+	let head = this.extract(0, size);
+	this.chop(len - size);
+	return head;
+}
+
 const CDD_PROVIDER = get_cdd_provider();
 
 // Mock CDD for user and make sure they have POLYX.
 fn mock_user(user, balance) {
+	return mock_users([user], balance, true);
+}
+
+// Mock CDD for users and make sure they have POLYX.
+fn mock_users(users, balance) {
+	return mock_users(users, balance, true);
+}
+
+// Mock CDD for users and make sure they have POLYX.
+fn mock_users(users, balance, gen_dids) {
+	// cdd/sudo user.
+	let cdd_user = global::SUDO_USER;
+	let has_sudo = true;
+	if cdd_user == () {
+		has_sudo = false;
+		cdd_user = global::CDD_PROVIDER;
+	}
+
+	// Query dids and balances.
+	let dids = ();
+	if gen_dids {
+		dids = get_dids(users);
+	}
+	let cur_bals = ();
+	if balance != () {
+		cur_bals = get_balances(users);
+	}
+
 	let calls = [];
-	let did = get_did(user);
-	if did == () {
-		if global::SPEC_VERSION < 3000 {
-			calls += Identity.mock_cdd_register_did(user);
-		} else {
-			calls += TestUtils.mock_cdd_register_did(user);
+	for (user, idx) in users {
+		if dids != () {
+			let did = dids[idx];
+			if did == () {
+				if global::SPEC_VERSION < 3000 {
+					calls += Identity.mock_cdd_register_did(user);
+				} else {
+					calls += TestUtils.mock_cdd_register_did(user);
+				}
+			}
+		}
+		if cur_bals != () {
+			let cur_bal = cur_bals[idx];
+			//print(`user: ${user}, cur: ${cur_bal}, bal: ${balance}`);
+			if has_sudo && cur_bal < (balance - 100.0) {
+				calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
+			}
 		}
 	}
-	calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
-	let res = global::CDD_PROVIDER.submit(Utility.batch_optimistic(calls));
-	return res.is_in_block;
+
+	let results = cdd_user.execute_force_batch(calls, 200);
+	print("MockUsers: Wait for batch results");
+	wait_for_in_block(results);
+	return users;
+}
+
+fn execute_batch_all(calls, max_batch_size) {
+	return this.execute_batch(calls, max_batch_size, "Atomic");
+}
+
+fn execute_force_batch(calls, max_batch_size) {
+	return this.execute_batch(calls, max_batch_size, "Optimistic");
+}
+
+fn execute_batch(calls, max_batch_size) {
+	return this.execute_batch(calls, max_batch_size, ());
+}
+
+fn execute_batch(calls, max_batch_size, batch_type) {
+	let results = [];
+	let batch_size = max_batch_size;
+	while calls.len() > 0 {
+		let batch_calls = calls.cut_head(batch_size);
+		let batch_call = switch batch_type {
+			"Optimistic" => Utility.force_batch(batch_calls),
+			"Atomic" => Utility.batch_all(batch_calls),
+			_ => Utility.batch(batch_calls),
+		};
+		results += this.submit(batch_call);
+	}
+	return results;
 }
 
 // Generate list of names from parameters.
@@ -202,100 +280,49 @@ fn create_keys_batch_with_balance(prefix, offset, count, balance) {
 }
 
 // Create keys.
+fn create_keys(names) {
+	return create_keys(names, (), false)
+}
+
+// Create keys.
 fn create_keys(names, balance) {
+	return create_keys(names, balance, false)
+}
+
+// Create keys.
+fn create_keys(names, balance, gen_dids) {
 	// Generate keys.
 	let keys = [];
 	for name in names {
 		let key = USER[name];
 		keys += key;
 	}
-	// sudo user.
-	let sudo_user = global::SUDO_USER;
-	if balance != () && sudo_user != () {
-		// Query balances.
-		let cur_bals = get_balances(keys);
-
-		print("CreateKeys: Batch 'set_balance' calls");
-		let results = [];
-		let calls = [];
-		for (key, idx) in keys {
-			let cur_bal = cur_bals[idx];
-			if cur_bal < balance {
-				calls += Sudo.sudo(Balances.set_balance(key, balance, 0));
-			}
-			if calls.len() > 200 {
-				results += sudo_user.submit(Utility.batch_optimistic(calls));
-				calls = [];
-			}
-		}
-
-		// Final batch if there are still calls to make.
-		if calls.len() > 0 {
-			results += sudo_user.submit(Utility.batch_optimistic(calls));
-		}
-		print("CreateKeys: Wait for batch 'set_balance' results");
-		wait_for_in_block(results);
+	if balance != () || gen_dids {
+		return mock_users(keys, balance, gen_dids);
 	}
 	return keys;
 }
 
 // Create a batch of users.
 fn create_users_batch(prefix, offset, count, balance) {
+	return create_users_batch(prefix, offset, count, balance, true);
+}
+
+// Create a batch of users.
+fn create_users_batch(prefix, offset, count, balance, gen_dids) {
 	print(`CreateUsers: prefix='${prefix}', range=(${offset}..${count}), balance=${balance}`);
 	let names = gen_names(prefix, offset, count);
-	return create_users(names, balance);
+	return create_users(names, balance, gen_dids);
 }
 
 // Create users.
 fn create_users(names, balance) {
-	let users = [];
-	// cdd/sudo user.
-	let cdd_user = global::SUDO_USER;
-	let has_sudo = true;
-	if cdd_user == () {
-		has_sudo = false;
-		cdd_user = global::CDD_PROVIDER;
-	}
+	return create_keys(names, balance, true);
+}
 
-	// Generate users.
-	for name in names {
-		let user = USER[name];
-		users += user;
-	}
-
-	// Query dids and balances.
-	let dids = get_dids(users);
-	let cur_bals = get_balances(users);
-
-	let results = [];
-	let calls = [];
-	for (user, idx) in users {
-		let did = dids[idx];
-		let cur_bal = cur_bals[idx];
-		if did == () {
-			if global::SPEC_VERSION < 3000 {
-				calls += Identity.mock_cdd_register_did(user);
-			} else {
-				calls += TestUtils.mock_cdd_register_did(user);
-			}
-		}
-		//print(`user: ${user}, cur: ${cur_bal}, bal: ${balance}`);
-		if has_sudo && cur_bal < (balance - 100.0) {
-			calls += Sudo.sudo(Balances.set_balance(user, balance, 0));
-		}
-		if calls.len() > 200 {
-			results += cdd_user.submit(Utility.batch_optimistic(calls));
-			calls = [];
-		}
-	}
-
-	// Final batch if there are still calls to make.
-	if calls.len() > 0 {
-		results += cdd_user.submit(Utility.batch_optimistic(calls));
-	}
-	print("CreateUsers: Wait for batch results");
-	wait_for_in_block(results);
-	return users;
+// Create users.
+fn create_users(names, balance, gen_dids) {
+	return create_keys(names, balance, gen_dids);
 }
 
 // Create a batch of assets and issuers.
@@ -358,7 +385,7 @@ fn create_assets_full(tickers, asset_type, supply, disable_iu) {
 	for (ticker, idx) in tickers {
 		let issuer = issuers[idx];
 
-		results += issuer.submit(Utility.batch_optimistic([
+		results += issuer.submit(Utility.force_batch([
 			call_asset_create_asset(`token ${ticker}`, ticker, true, asset_type, [], (), disable_iu),
 			Statistics.set_active_asset_stats(#{ Ticker: ticker }, stat_types),
 			call_asset_issue(ticker, supply, #{ Default: () }),

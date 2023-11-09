@@ -85,7 +85,7 @@ impl User {
     Ok(res)
   }
 
-  fn to_string(&self) -> String {
+  fn name(&self) -> String {
     self.name.clone()
   }
 }
@@ -96,6 +96,10 @@ pub struct SharedUser(Arc<RwLock<User>>);
 impl SharedUser {
   pub fn public(&self) -> sr25519::Public {
     self.0.read().unwrap().public()
+  }
+
+  pub fn name(&self) -> String {
+    self.0.read().unwrap().name()
   }
 
   pub fn acc(&mut self) -> AccountId {
@@ -126,7 +130,7 @@ impl SharedUser {
   }
 
   fn to_string(&mut self) -> String {
-    self.0.read().unwrap().to_string()
+    self.0.read().unwrap().name()
   }
 }
 
