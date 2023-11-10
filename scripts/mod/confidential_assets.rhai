@@ -474,10 +474,8 @@ fn affirm_settlement() {
 		return [];
 	}
 
-	let legs = this.leg_details;
-	// Generate sender proofs for all legs.
-	for (leg, idx) in legs {
-		let leg_id = idx;
+	// Affirm the settlement with all parties.
+	for (leg, leg_id) in this.leg_details {
 		let asset = leg.asset;
 		let sender = leg.sender;
 		let receiver = leg.receiver;
@@ -487,29 +485,23 @@ fn affirm_settlement() {
 		let sender_balance = sender.get_confidential_balance(asset.ticker);
 
 		// Sender affirms.
-		let init_tx = sender.create_sender_proof(
+		let sender_proof = sender.create_sender_proof(
 				receiver.pub_key,
 				auditors,
 				amount,
 				sender_balance.enc,
 				sender_balance.balance,
 			);
-		//print(`init_tx = ${init_tx}`);
-		sender.sub_confidential_balance(asset.ticker, init_tx.sender_amount);
-		leg.sender_proof = init_tx;
-		legs[idx] = leg;
-	}
-
-	// Affirm the settlement with all parties.
-	for (leg, leg_id) in legs {
-		//print("Sender affirms with init_tx");
-		results += leg.sender.signer.submit(ConfidentialAsset.affirm_transaction(
+		//print(`sender_proof = ${sender_proof}`);
+		sender.sub_confidential_balance(asset.ticker, sender_proof.sender_amount);
+		//print("Sender affirms with sender_proof");
+		results += sender.signer.submit(ConfidentialAsset.affirm_transaction(
 			transaction_id,
-			#{ leg_id: leg_id, party: #{ Sender: leg.sender_proof }}
+			#{ leg_id: leg_id, party: #{ Sender: sender_proof }}
 		));
 
 		// Receiver affirms.
-		results += leg.receiver.signer.submit(ConfidentialAsset.affirm_transaction(
+		results += receiver.signer.submit(ConfidentialAsset.affirm_transaction(
 			transaction_id,
 			#{ leg_id: leg_id, party: #{ Receiver: () }}
 		));

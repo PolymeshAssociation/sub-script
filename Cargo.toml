@@ -84,7 +84,27 @@ rand = { version = "0.8", optional = true, features = ["getrandom", "alloc"], de
 curve25519-dalek = { package = "curve25519-dalek-ng", optional = true, version = "4", default-features = false, features = ["nightly", "alloc"] }
 
 [features]
-default = [ "std", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p", "utils" ]
+default = [ "std", "u64_backend", "pg", "ledger", "polymesh", "v12", "v13", "v14", "libp2p", "utils" ]
+
+# Backends
+u32_backend = [
+	"curve25519-dalek/u32_backend",
+	"confidential_assets?/u32_backend",
+	"polymesh-primitives/u32_backend",
+]
+u64_backend = [
+	"curve25519-dalek/u64_backend",
+	"confidential_assets?/u64_backend",
+	"polymesh-primitives/u64_backend",
+]
+avx2_backend = [
+	"curve25519-dalek/avx2_backend",
+	"confidential_assets?/avx2_backend",
+]
+simd_backend = [
+	"curve25519-dalek/simd_backend",
+	"confidential_assets?/simd_backend",
+]
 
 # Enable support for very old Polymesh version.
 polymesh_v2 = [
@@ -138,7 +158,6 @@ pg = [
 no_std = [
 	"confidential_assets?/no_std",
 	"polymesh-primitives/no_std",
-	"polymesh-primitives/u64_backend",
 ]
 
 std = [
@@ -146,5 +165,4 @@ std = [
 	"rayon",
 	"discrete_log",
 	"polymesh-primitives/std",
-	"polymesh-primitives/u64_backend",
 ]
