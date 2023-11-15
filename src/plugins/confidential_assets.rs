@@ -94,12 +94,7 @@ impl ConfidentialUser {
     &self,
     encrypted_value: CipherText,
   ) -> Result<Decimal, Box<EvalAltResult>> {
-    #[cfg(not(all(feature = "discrete_log", feature = "rayon")))]
     let value = { self.keys.secret.decrypt(&encrypted_value) };
-    #[cfg(all(not(feature = "discrete_log"), feature = "rayon"))]
-    let value = { self.keys.secret.decrypt_parallel(&encrypted_value) };
-    #[cfg(feature = "discrete_log")]
-    let value = { self.keys.secret.decrypt_discrete_log(&encrypted_value) };
 
     let mut value = Decimal::from_u64(value.map_err(|e| e.to_string())?)
       .ok_or_else(|| format!("Failed to convert balance to `Decimal`"))?;
@@ -382,7 +377,7 @@ pub fn init_engine(
       |proof: &mut ConfidentialTransferProof, receiver: ElgamalKeys, amount: Dynamic| {
         let amount = to_balance(amount)?;
         proof
-          .receiver_verify(receiver, amount)
+          .receiver_verify(receiver, Some(amount))
           .map_err(|e| e.to_string())?;
         Ok(())
       },
@@ -392,7 +387,7 @@ pub fn init_engine(
       |proof: &mut ConfidentialTransferProof, mediator: ElgamalKeys, amount: Dynamic| {
         let amount = to_balance(amount)?;
         let tx_amount = proof
-          .auditor_verify(AuditorId(0), &mediator)
+          .auditor_verify(AuditorId(0), &mediator, Some(amount))
           .map_err(|e| e.to_string())?;
         if tx_amount != amount {
           return Err("Transaction amount didn't match expected amount".into());
