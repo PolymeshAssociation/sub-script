@@ -38,6 +38,17 @@ fn create_users(names, balance, gen_dids) {
 	return users;
 }
 
+// Create Confidential Asset user.
+fn create_user(name, balance) {
+	return create_user(name, balance, true);
+}
+
+// Create Confidential Asset user.
+fn create_user(name, balance, gen_dids) {
+	let users = create_users([name], balance, gen_dids);
+	return users[0];
+}
+
 fn tickers_to(prefix, tickers) {
 	let ticker_to = |ticker| `${prefix}_${ticker}`;
 	return tickers.map(ticker_to);
@@ -75,6 +86,12 @@ fn create_coin_batch(prefix, offset, count, supply, polyx, init_assets) {
 	return create_assets(tickers, #{ StableCoin: () }, supply, polyx, false, init_assets);
 }
 
+// Create a confidential asset, issuer and mediator.
+fn create_asset(ticker, supply) {
+	let assets = create_assets([ticker], #{ EquityCommon: () }, supply, 100000.0, true, true);
+	return assets.assets[0];
+}
+
 // Create confidential assets, issuers and mediators.
 fn create_assets(tickers, asset_type, supply, polyx, require_mediator) {
 	return create_assets(tickers, asset_type, supply, polyx, require_mediator, true);
@@ -96,13 +113,9 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 	}
 
 	// Create a venue for each mediator.
-	let mediators_pending = mediators.init_venues_full(false);
+	mediators.init_venues_full(false);
 	// Create a venue for each issuer.
-	let issuers_pending = issuers.init_venues_full(false);
-
-	// Process `create_venue`.
-	mediators.init_venues_process(mediators_pending);
-	issuers.init_venues_process(issuers_pending);
+	issuers.init_venues_full(false);
 
 	let assets = [];
 	let asset_auditors = #{};
@@ -112,10 +125,6 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		let mediator = mediators[idx];
 		let pub_key = issuer.pub_key;
 
-		let venues = [
-			issuer.venue_id,
-			mediator.venue_id,
-		];
 		let role = #{ Auditor: () };
 		let auditor_pub_key = mediator.pub_key;
 		if require_mediator {
@@ -140,7 +149,6 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 					supply,
 					pub_key,
 				),
-				ConfidentialAsset.allow_venues(ticker, venues),
 			]));
 		} else {
 			// Init local copy of encrypted balance.
@@ -181,17 +189,32 @@ fn init_mediators() {
 	return results;
 }
 
-fn init_accounts(ticker) {
+fn init_mediator() {
+	return this.signer.submit(ConfidentialAsset.add_mediator_account(this.pub_key));
+}
+
+fn init_accounts(users, ticker) {
 	let results = [];
-	for (user, idx) in this {
+	for (user, idx) in users {
 		let enc_balance = user.get_enc_balance(ticker);
 		if enc_balance == () {
 			user.update_confidential_balance(ticker, 0.0);
 			results += user.signer.submit(ConfidentialAsset.create_account(ticker, user.pub_key));
-			this[idx] = user;
 		}
 	}
 	return results;
+}
+
+fn init_account(ticker) {
+	let enc_balance = this.get_enc_balance(ticker);
+	if enc_balance == () {
+		this.update_confidential_balance(ticker, 0.0);
+		return this.signer.submit(ConfidentialAsset.create_account(ticker, this.pub_key));
+	}
+}
+
+fn init_account(user, ticker) {
+	return user.init_account(ticker);
 }
 
 // Get user's token balance from the chain.
@@ -219,6 +242,10 @@ fn get_confidential_balance(ticker) {
 	//print(`${this}'s balance = ${asset.balance}`);
 	this.balances[ticker] = asset;
 	return asset;
+}
+
+fn get_confidential_balance(user, ticker) {
+	return user.get_confidential_balance(ticker);
 }
 
 fn add_confidential_balance(ticker, amount) {
@@ -290,14 +317,14 @@ fn init_venues() {
 
 fn init_venues_full(wait_for_ids) {
 	let pending = [];
-	for (user, idx) in this {
+	for user in this {
 		let venues = user.get_venues();
 		if venues.len() > 0 {
-			this[idx].venue_id = venues[0];
+			user.venue_id = venues[0];
 		} else {
 			let res = user.signer.submit(ConfidentialAsset.create_venue());
 			pending += #{
-				idx: idx,
+				user: user,
 				res: res,
 			};
 		}
@@ -317,7 +344,7 @@ fn init_venues_process(pending) {
 		if venue_id == () {
 			print(`Failed to create venue: ${res}`);
 		}
-		this[result.idx].venue_id = venue_id;
+		result.user.venue_id = venue_id;
 	}
 	return pending;
 }
@@ -409,7 +436,7 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 	let exchange = asset.issuer;
 
 	// Initialize the users confidential accounts.
-	users.init_accounts(asset.ticker);
+	init_accounts(users, asset.ticker);
 
 	// Create settlements.
 	let settlements = [];
