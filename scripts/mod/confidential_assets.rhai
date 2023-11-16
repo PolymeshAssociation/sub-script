@@ -142,8 +142,8 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		if init_assets {
 			issuer.add_confidential_balance(ticker, supply);
 			results += issuer.signer.submit(Utility.force_batch([
-				ConfidentialAsset.create_account(ticker, pub_key),
 				ConfidentialAsset.create_confidential_asset(`token ${ticker}`, ticker, asset_type, auditors),
+				ConfidentialAsset.create_account(ticker, pub_key),
 				ConfidentialAsset.mint_confidential_asset(
 					ticker,
 					supply,
