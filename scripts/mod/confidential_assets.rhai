@@ -230,15 +230,15 @@ fn get_confidential_balance(ticker) {
 	if asset == () {
 		asset = #{};
 	}
-	if asset.enc == () {
-		// Get user's token balance from the chain.
-		asset.enc = this.get_enc_balance(ticker);
-		if asset.enc == () {
-			asset.enc = new_CipherText();
-			asset.balance = 0.0;
-		}
+	// Get user's token balance from the chain.
+	let enc = this.get_enc_balance(ticker);
+	if enc == () {
+		asset.enc = new_CipherText();
+		asset.balance = 0.0;
+	} else if enc != asset.enc {
+		asset.enc = enc;
+		asset.balance = this.decrypt_balance(enc);
 	}
-	asset.balance = this.decrypt_balance(asset.enc);
 	//print(`${this}'s balance = ${asset.balance}`);
 	this.balances[ticker] = asset;
 	return asset;

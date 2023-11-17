@@ -3,7 +3,7 @@ use sp_core::hashing::blake2_256;
 
 use confidential_assets::{
   elgamal::CipherText,
-  transaction::{AuditorId, ConfidentialTransferProof},
+  transaction::ConfidentialTransferProof,
   Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar,
 };
 use rand::{rngs::StdRng, SeedableRng};
@@ -135,11 +135,9 @@ impl ConfidentialUser {
     // Sort auditors.
     let mut auditors = auditors.into_typed_array::<ElgamalPublicKey>()?;
     auditors.sort();
-    // assign AuditorIds to each auditor.
+    // Sort auditors.
     let auditors = auditors
       .into_iter()
-      .enumerate()
-      .map(|(idx, key)| (AuditorId(idx as _), key))
       .collect();
     // Create sender proof.
     let init_tx = ConfidentialTransferProof::new(
@@ -348,6 +346,12 @@ pub fn init_engine(
     .register_fn("new_CipherText", || {
       CipherText::default()
     })
+    .register_fn("==", |a: &mut CipherText, b: CipherText| {
+      *a == b
+    })
+    .register_fn("!=", |a: &mut CipherText, b: CipherText| {
+      *a != b
+    })
     .register_result_fn("+", |a: &mut CipherText, b: Dynamic| {
       let b = to_ciphertext(b)?;
       Ok(*a + b)
@@ -357,8 +361,6 @@ pub fn init_engine(
       Ok(*a - b)
     })
     .register_fn("to_string", hex_to_string::<CipherText>)
-    .register_type_with_name::<AuditorId>("AuditorId")
-    .register_fn("to_string", hex_to_string::<AuditorId>)
     .register_type_with_name::<ConfidentialTransferProof>("ConfidentialTransferProof")
     .register_get(
       "sender_amount",
@@ -387,7 +389,7 @@ pub fn init_engine(
       |proof: &mut ConfidentialTransferProof, mediator: ElgamalKeys, amount: Dynamic| {
         let amount = to_balance(amount)?;
         let tx_amount = proof
-          .auditor_verify(AuditorId(0), &mediator, Some(amount))
+          .auditor_verify(0, &mediator, Some(amount))
           .map_err(|e| e.to_string())?;
         if tx_amount != amount {
           return Err("Transaction amount didn't match expected amount".into());
