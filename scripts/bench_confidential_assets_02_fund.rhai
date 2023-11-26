@@ -12,7 +12,7 @@ let count = ARG.shift();
 count = if count == () { 10 } else { parse_int(count) };
 let investor_count = count;
 
-let threads = if count > 20 { 20 } else { 1 };
+let threads = if count > 30 { 30 } else { 1 };
 
 // Make sure there are at least 2 users per thread.
 if (count / threads) <= 1 {
@@ -24,14 +24,10 @@ if (count / threads) <= 1 {
 let per_thread = 2;
 let asset_count = per_thread * threads;
 let coin_count = per_thread * threads;
-let exchange_count = per_thread * threads;
 
 let polyx = 100000.0;
 print(`Create confidential investors.`);
 let investors = ca::create_users_batch(`${prefix}_Investor`, 0, investor_count, polyx, false);
-
-print(`Create exchange users.`);
-let exchanges = ca::create_users_batch(`${prefix}_Exchange`, 0, exchange_count, polyx, false);
 
 let supply = 100;
 let total_supply = supply * (investor_count + 20);
@@ -45,7 +41,6 @@ let coins = ca::create_coin_batch(`${prefix}C`, 0, coin_count, total_supply, pol
 count /= threads;
 asset_count /= threads;
 coin_count /= threads;
-exchange_count /= threads;
 print(`${threads} threads, (users: ${count}, assets: ${asset_count}, coins: ${coin_count}) per thread.`);
 
 if threads > 1 {
@@ -61,7 +56,6 @@ let task_code = `
 	let assets = ARG.shift();
 	let coins = ARG.shift();
 	let auditors = ARG.shift();
-	let exchanges = ARG.shift();
 
 	let all_results = [];
 
@@ -123,13 +117,11 @@ for thread_idx in range(0, threads) {
   let investor_offset = (thread_idx * count);
   let asset_offset = (thread_idx * asset_count);
   let coin_offset = (thread_idx * coin_count);
-  let exchange_offset = (thread_idx * exchange_count);
 	let investors = investors.extract(investor_offset, count);
 	let assets = assets.extract(asset_offset, asset_count);
 	let coins = coins.extract(coin_offset, coin_count);
-	let exchanges = exchanges.extract(exchange_offset, exchange_count);
-	//print(` -- thread[${thread_idx}]: users: ${investors.len()}, assets: ${assets.len()}, coins: ${coins.len()}, exchanges: ${exchanges.len()}`);
-	tasks += ENGINE.spawn_task_args(task_code, [thread_idx, investors, assets, coins, auditors, exchanges]);
+	//print(` -- thread[${thread_idx}]: users: ${investors.len()}, assets: ${assets.len()}, coins: ${coins.len()}`);
+	tasks += ENGINE.spawn_task_args(task_code, [thread_idx, investors, assets, coins, auditors]);
 }
 
 print("wait for tasks to finish.");

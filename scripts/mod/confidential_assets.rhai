@@ -140,13 +140,14 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		asset_auditors[ticker] = auditors;
 
 		if init_assets {
+			//print(` --- mint[${ticker}]: amount=${supply}`);
 			issuer.add_confidential_balance(ticker, supply);
 			results += issuer.signer.submit(Utility.force_batch([
 				ConfidentialAsset.create_confidential_asset(`token ${ticker}`, ticker, asset_type, auditors),
 				ConfidentialAsset.create_account(ticker, pub_key),
 				ConfidentialAsset.mint_confidential_asset(
 					ticker,
-					supply,
+					supply / 1000000.0,
 					pub_key,
 				),
 			]));
@@ -164,7 +165,7 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 	// Wait for all results.
 	if init_assets {
 		print("CreateConfidentialAssets: Wait for batch results");
-		p::wait_for_in_block(results);
+		p::wait_for_finalized(results);
 	}
 
 	return #{
@@ -217,6 +218,14 @@ fn init_account(user, ticker) {
 	return user.init_account(ticker);
 }
 
+// Get user's incoming balance from the chain.
+fn get_enc_incoming_balance(ticker) {
+	return STORAGE.double_map(
+	  "ConfidentialAsset", "IncomingBalance",
+		this.pub_key, ticker,
+	);
+}
+
 // Get user's token balance from the chain.
 fn get_enc_balance(ticker) {
 	return STORAGE.double_map(
@@ -231,13 +240,15 @@ fn get_confidential_balance(ticker) {
 		asset = #{};
 	}
 	// Get user's token balance from the chain.
-	let enc = this.get_enc_balance(ticker);
-	if enc == () {
-		asset.enc = new_CipherText();
-		asset.balance = 0.0;
-	} else if enc != asset.enc {
-		asset.enc = enc;
-		asset.balance = this.decrypt_balance(enc);
+	if asset.enc == () {
+		let enc = this.get_enc_balance(ticker);
+		if enc == () {
+			asset.enc = new_CipherText();
+			asset.balance = 0.0;
+		} else {
+			asset.enc = enc;
+			asset.balance = this.decrypt_balance(enc);
+		}
 	}
 	//print(`${this}'s balance = ${asset.balance}`);
 	this.balances[ticker] = asset;
@@ -272,6 +283,7 @@ fn update_confidential_balance(ticker, amount, action) {
 		},
 	}
 	asset.balance = this.decrypt_balance(asset.enc);
+	//print(`${this}'s balance updated = ${asset.balance}`);
 	this.balances[ticker] = asset;
 	return asset;
 }
@@ -317,7 +329,7 @@ fn init_venues() {
 
 fn init_venues_full(wait_for_ids) {
 	let pending = [];
-	for user in this {
+	for (user, idx) in this {
 		let venues = user.get_venues();
 		if venues.len() > 0 {
 			user.venue_id = venues[0];
@@ -328,6 +340,7 @@ fn init_venues_full(wait_for_ids) {
 				res: res,
 			};
 		}
+		this[idx] = user;
 	}
 	if wait_for_ids {
 		return this.init_venues_process(pending);
@@ -388,7 +401,7 @@ fn create_settlement(exchange, orders, sides) {
 	}
 	let res = exchange.signer.submit(ConfidentialAsset.add_transaction(venue_id, legs, ()));
 	return #{
-		res: res,
+		prev_tx: res,
 		leg_count: legs.len(),
 		venue_user: exchange,
 		leg_details: leg_details,
@@ -436,7 +449,8 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 	let exchange = asset.issuer;
 
 	// Initialize the users confidential accounts.
-	init_accounts(users, asset.ticker);
+	let results = init_accounts(users, asset.ticker);
+	p::wait_for_finalized(results);
 
 	// Create settlements.
 	let settlements = [];
@@ -445,13 +459,21 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 		let receivers = users.cut_head(global::MAX_CONFIDENTIAL_LEGS);
 		sides += receivers;
 		let orders = [];
-		for idx in 1..=receivers.len() {
-			orders += #{
-				sender: 0, receiver: idx, asset: asset, amount: amount,
-			};
+		for receiver in receivers {
+			let receiver_balance = receiver.get_confidential_balance(asset.ticker);
+			// Only fund the receiver if their current balance is less then the amount.
+			if receiver_balance.balance < amount {
+				let idx = sides.len();
+				sides += receiver;
+				orders += #{
+					sender: 0, receiver: idx, asset: asset, amount: amount,
+				};
+			}
 		}
 
-		settlements += create_settlement(exchange, orders, sides);
+		if orders.len() > 0 {
+			settlements += create_settlement(exchange, orders, sides);
+		}
 	}
 	//print(`  setup_asset_fund_users: users=${users.len()}, settlements=${settlements.len()}`);
 
@@ -463,11 +485,11 @@ fn asset_fund_users(asset, from, users, amount) {
 	let settlements = setup_asset_fund_users(asset, from, users, amount);
 
 	let results = affirm_settlements(settlements);
-	wait_for_in_block(results);
+	p::wait_for_finalized(results);
 	all_results += results;
 
 	let results = execute_settlements(settlements);
-	wait_for_in_block(results);
+	p::wait_for_finalized(results);
 	all_results += results;
 
 	let results = apply_incoming_settlements(settlements);
@@ -476,23 +498,35 @@ fn asset_fund_users(asset, from, users, amount) {
 }
 
 fn get_settlement_id() {
+	return this.get_settlement_id(true);
+}
+
+fn get_settlement_id(wait) {
+	let prev_tx = this.prev_tx;
+	// Wait finalization of prev_tx to finalize.
+	if wait {
+		if !prev_tx.wait_finalized {
+			print(`Failed to finalize previous settlement transaction: ${prev_tx.result}`);
+		}
+	}
+
 	// Wait for settlement to be created and get the transaction_id.
 	let transaction_id = this.transaction_id;
 	if transaction_id != () {
 		return transaction_id;
 	}
-	for event in this.res.events("ConfidentialAsset.TransactionCreated") {
+	for event in prev_tx.events("ConfidentialAsset.TransactionCreated") {
 		transaction_id = event.args[2];
 	}
 	if transaction_id == () {
-		let reason = this.res.result;
+		let reason = prev_tx.result;
 		print(`Failed to create confidential transaction: ${reason}`);
 	}
 	this.transaction_id = transaction_id;
 	return transaction_id;
 }
 
-fn affirm_settlement() {
+fn sender_affirm_settlement() {
 	let results = [];
 
 	// Wait for settlement to be created and get the transaction_id.
@@ -501,7 +535,7 @@ fn affirm_settlement() {
 		return [];
 	}
 
-	// Affirm the settlement with all parties.
+	// Sender affirms the settlement.
 	for (leg, leg_id) in this.leg_details {
 		let asset = leg.asset;
 		let sender = leg.sender;
@@ -510,6 +544,7 @@ fn affirm_settlement() {
 		let amount = leg.amount;
 		// Get Sender's balance from the chain.
 		let sender_balance = sender.get_confidential_balance(asset.ticker);
+		//print(`sender_proof: amount=${amount}, sender_balance=${sender_balance.balance}`);
 
 		// Sender affirms.
 		let sender_proof = sender.create_sender_proof(
@@ -526,13 +561,77 @@ fn affirm_settlement() {
 			transaction_id,
 			#{ leg_id: leg_id, party: #{ Sender: sender_proof }}
 		));
+	}
+	if results.len() > 0 {
+		this.prev_tx = results[0];
+	}
+	return results;
+}
 
+fn sender_affirm_settlements(settlements) {
+	return settlements.sender_affirm_settlements();
+}
+
+fn sender_affirm_settlements() {
+	let results = [];
+	for (settlement, idx) in this {
+		results += settlement.sender_affirm_settlement();
+		this[idx] = settlement;
+	}
+	return results;
+}
+
+fn receiver_affirm_settlements(settlements) {
+	return settlements.receiver_affirm_settlements();
+}
+
+fn receiver_affirm_settlement() {
+	let results = [];
+
+	// Wait for settlement to be created and get the transaction_id.
+	let transaction_id = this.get_settlement_id();
+	if transaction_id == () {
+		return [];
+	}
+
+	// Affirm the settlement with all parties.
+	for (leg, leg_id) in this.leg_details {
 		// Receiver affirms.
-		results += receiver.signer.submit(ConfidentialAsset.affirm_transaction(
+		results += leg.receiver.signer.submit(ConfidentialAsset.affirm_transaction(
 			transaction_id,
 			#{ leg_id: leg_id, party: #{ Receiver: () }}
 		));
+	}
+	if results.len() > 0 {
+		this.prev_tx = results[0];
+	}
+	return results;
+}
 
+fn mediator_affirm_settlements(settlements) {
+	return settlements.mediator_affirm_settlements();
+}
+
+fn receiver_affirm_settlements() {
+	let results = [];
+	for (settlement, idx) in this {
+		results += settlement.receiver_affirm_settlement();
+		this[idx] = settlement;
+	}
+	return results;
+}
+
+fn mediator_affirm_settlement() {
+	let results = [];
+
+	// Wait for settlement to be created and get the transaction_id.
+	let transaction_id = this.get_settlement_id();
+	if transaction_id == () {
+		return [];
+	}
+
+	// Affirm the settlement with all parties.
+	for (leg, leg_id) in this.leg_details {
 		// Mediator affirms.
 		let mediator = leg.asset.mediator;
 		if mediator != () {
@@ -542,15 +641,77 @@ fn affirm_settlement() {
 			));
 		}
 	}
+	if results.len() > 0 {
+		this.prev_tx = results[0];
+	}
+	return results;
+}
+
+fn mediator_affirm_settlements() {
+	let results = [];
+	for (settlement, idx) in this {
+		results += settlement.mediator_affirm_settlement();
+		this[idx] = settlement;
+	}
 	return results;
 }
 
 fn affirm_settlements(settlements) {
+	return settlements.affirm_settlements();
+}
+
+fn affirm_settlements() {
 	let results = [];
-	for settlement in settlements {
-		results += settlement.affirm_settlement();
+	print("senders affirm");
+	for (settlement, idx) in this {
+		results += settlement.sender_affirm_settlement();
+		this[idx] = settlement;
+	}
+	print("receivers affirm");
+	for (settlement, idx) in this {
+		results += settlement.receiver_affirm_settlement();
+		this[idx] = settlement;
+	}
+	print("mediators affirm");
+	for (settlement, idx) in this {
+		results += settlement.mediator_affirm_settlement();
+		this[idx] = settlement;
 	}
 	return results;
+}
+
+fn run_settlements(settlements) {
+	return settlements.run_settlements();
+}
+
+fn run_settlements() {
+	let all_results = [];
+	print("senders affirm");
+	for (settlement, idx) in this {
+		all_results += settlement.sender_affirm_settlement();
+		this[idx] = settlement;
+	}
+	print("receivers affirm");
+	for (settlement, idx) in this {
+		all_results += settlement.receiver_affirm_settlement();
+		this[idx] = settlement;
+	}
+	print("mediators affirm");
+	for (settlement, idx) in this {
+		all_results += settlement.mediator_affirm_settlement();
+		this[idx] = settlement;
+	}
+	print("venues execute settlement");
+	let exe_results = [];
+	for (settlement, idx) in this {
+		exe_results += settlement.execute_settlement();
+		this[idx] = settlement;
+	}
+	all_results += exe_results;
+	return #{
+		all_results: all_results,
+		exe_results: exe_results,
+	};
 }
 
 fn execute_settlement() {
@@ -567,9 +728,14 @@ fn execute_settlement() {
 }
 
 fn execute_settlements(settlements) {
+	return settlements.execute_settlements();
+}
+
+fn execute_settlements() {
 	let results = [];
-	for settlement in settlements {
+	for (settlement, idx) in this {
 		results += settlement.execute_settlement();
+		this[idx] = settlement;
 	}
 	return results;
 }
@@ -583,17 +749,26 @@ fn apply_incoming_settlement() {
 		let receiver = leg.receiver;
 
 		// Receiver apply incoming balance.
-		results += receiver.signer.submit(
-			ConfidentialAsset.apply_incoming_balance(receiver.pub_key, ticker)
-		);
+		let incoming = receiver.get_enc_incoming_balance(ticker);
+		if incoming != () {
+			receiver.add_confidential_balance(ticker, incoming);
+			results += receiver.signer.submit(
+				ConfidentialAsset.apply_incoming_balance(receiver.pub_key, ticker)
+			);
+		}
 	}
 	return results;
 }
 
 fn apply_incoming_settlements(settlements) {
+	return settlements.apply_incoming_settlements();
+}
+
+fn apply_incoming_settlements() {
 	let results = [];
-	for settlement in settlements {
+	for (settlement, idx) in this {
 		results += settlement.apply_incoming_settlement();
+		this[idx] = settlement;
 	}
 	return results;
 }

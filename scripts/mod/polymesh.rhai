@@ -20,6 +20,16 @@ fn wait_for_in_block(results) {
 	}
 }
 
+// Wait for all calls to be finalized
+// This doesn't check if the call was successful.
+fn wait_for_finalized(results) {
+	for res in results {
+		if !res.wait_finalized {
+			print(`call failed: Invalid or dropped`);
+		}
+	}
+}
+
 // get multiple user's account ids.
 fn get_accounts(users) {
 	return users.map(|u| u.acc);

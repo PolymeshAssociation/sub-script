@@ -86,9 +86,12 @@ let task_code = `
 		let seller = investors[sell_idx];
 
 		for asset in asset_tickers {
-			for coin in coin_tickers {
-				settlements += p::create_buy_settlement(exchange, venue_id, buyer, seller, asset, coin, 1.0, 1.0);
-			}
+			//for coin in coin_tickers {
+			//	settlements += p::create_buy_settlement(exchange, venue_id, buyer, seller, asset, coin, 1.0, 1.0);
+			//}
+			settlements += p::create_settlement(exchange, venue_id, [
+				#{ sender: 0, receiver: 1, ticker: asset, amount: 1 },
+			], [buyer, seller]);
 		}
 	}
 	let orders = settlements.len();
