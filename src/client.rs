@@ -344,14 +344,16 @@ impl InnerClient {
   pub fn get_request_block_hash(
     &self,
     token: RequestToken,
-  ) -> Result<Option<BlockHash>, Box<EvalAltResult>> {
+  ) -> Result<Option<(BlockHash, bool)>, Box<EvalAltResult>> {
     let hash = loop {
       let status = self.rpc.get_update(token)?;
       match status {
-        Some(TransactionStatus::InBlock(hash))
-        | Some(TransactionStatus::Finalized(hash))
+        Some(TransactionStatus::InBlock(hash)) => {
+          break Some((hash, false));
+        }
+        Some(TransactionStatus::Finalized(hash))
         | Some(TransactionStatus::FinalityTimeout(hash)) => {
-          break Some(hash);
+          break Some((hash, true));
         }
         Some(TransactionStatus::Future) => {
           log::warn!("Transaction in future (maybe nonce issue)");
@@ -363,7 +365,7 @@ impl InnerClient {
           log::debug!("Transaction broadcast: {:?}", nodes);
         }
         Some(TransactionStatus::Retracted(hash)) => {
-          log::error!("Transaction retracted: {:?}", hash);
+          log::warn!("Transaction retracted: {:?}", hash);
         }
         Some(TransactionStatus::Usurped(tx_hash)) => {
           log::error!(
@@ -381,7 +383,7 @@ impl InnerClient {
           break None;
         }
         None => {
-          break None;
+          log::warn!("Subscription response: None.");
         }
       }
     };
@@ -563,7 +565,7 @@ impl Client {
   pub fn get_request_block_hash(
     &self,
     token: RequestToken,
-  ) -> Result<Option<BlockHash>, Box<EvalAltResult>> {
+  ) -> Result<Option<(BlockHash, bool)>, Box<EvalAltResult>> {
     self.inner.get_request_block_hash(token)
   }
 
@@ -607,6 +609,8 @@ pub struct InnerCallResult {
   client: Client,
   token: RequestToken,
   hash: Option<BlockHash>,
+  is_finalized: bool,
+  has_status: bool,
   xthex: String,
   idx: Option<u32>,
   events: Option<EventRecords>,
@@ -618,6 +622,8 @@ impl InnerCallResult {
       client: client.clone(),
       token,
       hash: None,
+      is_finalized: false,
+      has_status: false,
       xthex,
       idx: None,
       events: None,
@@ -625,11 +631,23 @@ impl InnerCallResult {
   }
 
   fn get_block_hash(&mut self) -> Result<(), Box<EvalAltResult>> {
-    if self.hash.is_some() {
+    if self.has_status {
       return Ok(());
     }
 
-    self.hash = self.client.get_request_block_hash(self.token)?;
+    match self.client.get_request_block_hash(self.token)? {
+      Some((hash, finalized)) => {
+        self.hash = Some(hash);
+        self.is_finalized = finalized;
+        if finalized {
+          self.has_status = true;
+        }
+      }
+      None => {
+        self.has_status = true;
+        Err(format!("Transaction failed: {}", self.xthex))?;
+      },
+    }
 
     Ok(())
   }
@@ -637,6 +655,22 @@ impl InnerCallResult {
   pub fn is_in_block(&mut self) -> Result<bool, Box<EvalAltResult>> {
     self.get_block_hash()?;
     Ok(self.hash.is_some())
+  }
+
+  pub fn is_finalized(&mut self) -> Result<bool, Box<EvalAltResult>> {
+    // Check if tx is finalized.
+    if !self.is_finalized {
+      self.get_block_hash()?;
+    }
+    Ok(self.is_finalized)
+  }
+
+  pub fn wait_finalized(&mut self) -> Result<bool, Box<EvalAltResult>> {
+    // Wait for tx to finalize
+    while !self.has_status {
+      self.get_block_hash()?;
+    }
+    Ok(self.is_finalized)
   }
 
   pub fn block_hash(&mut self) -> Result<String, Box<EvalAltResult>> {
@@ -739,6 +773,14 @@ impl ExtrinsicCallResult {
 
   pub fn is_in_block(&mut self) -> Result<bool, Box<EvalAltResult>> {
     self.0.write().unwrap().is_in_block()
+  }
+
+  pub fn is_finalized(&mut self) -> Result<bool, Box<EvalAltResult>> {
+    self.0.write().unwrap().is_finalized()
+  }
+
+  pub fn wait_finalized(&mut self) -> Result<bool, Box<EvalAltResult>> {
+    self.0.write().unwrap().wait_finalized()
   }
 
   pub fn block_hash(&mut self) -> Result<String, Box<EvalAltResult>> {
@@ -967,6 +1009,8 @@ pub fn init_engine(
     .register_get_result("result", ExtrinsicCallResult::result)
     .register_get_result("is_success", ExtrinsicCallResult::is_success)
     .register_get_result("is_in_block", ExtrinsicCallResult::is_in_block)
+    .register_get_result("is_finalized", ExtrinsicCallResult::is_finalized)
+    .register_get_result("wait_finalized", ExtrinsicCallResult::wait_finalized)
     .register_get("xthex", ExtrinsicCallResult::xthex)
     .register_fn("to_string", ExtrinsicCallResult::to_string)
     .register_type_with_name::<Era>("Era")
