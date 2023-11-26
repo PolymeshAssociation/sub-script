@@ -28,8 +28,7 @@ use crate::types::TypesRegistry;
 pub fn to_balance(val: Dynamic) -> Result<Balance, Box<EvalAltResult>> {
   let type_id = val.type_id();
   if type_id == TypeId::of::<Decimal>() {
-    let mut val = val.as_decimal().unwrap();
-    val *= Decimal::from(1_000_000u64);
+    let val = val.as_decimal().unwrap();
     Ok(val.to_u64().unwrap_or_default() as Balance)
   } else if type_id == TypeId::of::<INT>() {
     let val = val.as_int().unwrap();
@@ -42,8 +41,7 @@ pub fn to_balance(val: Dynamic) -> Result<Balance, Box<EvalAltResult>> {
 pub fn to_ciphertext(val: Dynamic) -> Result<CipherText, Box<EvalAltResult>> {
   let type_id = val.type_id();
   if type_id == TypeId::of::<Decimal>() {
-    let mut val = val.as_decimal().unwrap();
-    val *= Decimal::from(1_000_000u64);
+    let val = val.as_decimal().unwrap();
     Ok(CipherText::value(val.to_u64().unwrap_or_default().into()))
   } else if type_id == TypeId::of::<INT>() {
     let val = val.as_int().unwrap();
@@ -96,9 +94,8 @@ impl ConfidentialUser {
   ) -> Result<Decimal, Box<EvalAltResult>> {
     let value = { self.keys.secret.decrypt(&encrypted_value) };
 
-    let mut value = Decimal::from_u64(value.map_err(|e| e.to_string())?)
+    let value = Decimal::from_u64(value.map_err(|e| e.to_string())?)
       .ok_or_else(|| format!("Failed to convert balance to `Decimal`"))?;
-    value /= Decimal::from(1_000_000);
 
     Ok(value)
   }
@@ -115,7 +112,7 @@ impl ConfidentialUser {
       .secret
       .decrypt_with_hint(&encrypted_value, low, high)
       .and_then(|v| Decimal::from_u64(v as u64))
-      .map(|v| Dynamic::from_decimal(v / Decimal::from(1_000_000)))
+      .map(|v| Dynamic::from_decimal(v))
       .unwrap_or_else(|| Dynamic::UNIT);
     Ok(balance)
   }
