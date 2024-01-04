@@ -86,6 +86,13 @@ fn create_coin_batch(prefix, offset, count, supply, polyx, init_assets) {
 	return create_assets(tickers, #{ StableCoin: () }, supply, polyx, false, init_assets);
 }
 
+fn get_asset_id(ticker) {
+	return STORAGE.map(
+	  "ConfidentialAsset", "TickerToAsset",
+		ticker,
+	);
+}
+
 // Create a confidential asset, issuer and mediator.
 fn create_asset(ticker, supply) {
 	let assets = create_assets([ticker], #{ EquityCommon: () }, supply, 100000.0, true, true);
@@ -107,11 +114,6 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 
 	let results = [];
 
-	if init_assets {
-		// Init mediators.
-		results += mediators.init_mediators();
-	}
-
 	// Create a venue for each mediator.
 	mediators.init_venues_full(false);
 	// Create a venue for each issuer.
@@ -125,37 +127,45 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		let mediator = mediators[idx];
 		let pub_key = issuer.pub_key;
 
-		let role = #{ Auditor: () };
+		let mediators = [];
 		let auditor_pub_key = mediator.pub_key;
 		if require_mediator {
-			role = #{ Mediator: () };
+			let did = p::get_did(mediator.signer);
+			mediators.push(did);
 		} else {
 			mediator = ();
 		}
 		let auditors = #{
-			auditors: [
-				[auditor_pub_key, role],
-			]
+			auditors: [auditor_pub_key],
+			mediators: mediators,
 		};
-		asset_auditors[ticker] = auditors;
 
+		let asset_id = ();
 		if init_assets {
 			//print(` --- mint[${ticker}]: amount=${supply}`);
 			issuer.add_confidential_balance(ticker, supply);
-			results += issuer.signer.submit(Utility.force_batch([
-				ConfidentialAsset.create_confidential_asset(`token ${ticker}`, ticker, asset_type, auditors),
-				ConfidentialAsset.create_account(ticker, pub_key),
-				ConfidentialAsset.mint_confidential_asset(
-					ticker,
-					supply / 1000000.0,
-					pub_key,
-				),
+			let create_res = issuer.signer.submit(Utility.force_batch([
+				ConfidentialAsset.create_confidential_asset(ticker, [], auditors),
+				ConfidentialAsset.create_account(pub_key),
 			]));
+			// Wait for asset to be created.
+			if !create_res.is_success {
+				print(`Failed to create asset[${ticker}]: ${create_res.result()}`);
+			}
+			asset_id = get_asset_id(ticker);
+			results += issuer.signer.submit(ConfidentialAsset.mint_confidential_asset(
+				asset_id,
+				supply / 1000000.0,
+				pub_key,
+			));
 		} else {
+			asset_id = get_asset_id(ticker);
 			// Init local copy of encrypted balance.
 			issuer.get_confidential_balance(ticker);
 		}
+		asset_auditors[ticker] = auditors;
 		assets.push(#{
+			asset_id: asset_id,
 			ticker: ticker,
 			issuer: issuer,
 			mediator: mediator,
@@ -177,40 +187,28 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 fn auditors_keys() {
 	let keys = [];
 	for auditor in this.auditors.auditors {
-		keys += auditor[0];
+		keys += auditor;
 	}
 	return keys;
-}
-
-fn init_mediators() {
-	let results = [];
-	for user in this {
-		results += user.signer.submit(ConfidentialAsset.add_mediator_account(user.pub_key));
-	}
-	return results;
-}
-
-fn init_mediator() {
-	return this.signer.submit(ConfidentialAsset.add_mediator_account(this.pub_key));
 }
 
 fn init_accounts(users, ticker) {
 	let results = [];
 	for (user, idx) in users {
-		let enc_balance = user.get_enc_balance(ticker);
-		if enc_balance == () {
+		let did = user.get_account_did();
+		if did == () {
 			user.update_confidential_balance(ticker, 0.0);
-			results += user.signer.submit(ConfidentialAsset.create_account(ticker, user.pub_key));
+			results += user.signer.submit(ConfidentialAsset.create_account(user.pub_key));
 		}
 	}
 	return results;
 }
 
 fn init_account(ticker) {
-	let enc_balance = this.get_enc_balance(ticker);
-	if enc_balance == () {
+	let did = this.get_account_did();
+	if did == () {
 		this.update_confidential_balance(ticker, 0.0);
-		return this.signer.submit(ConfidentialAsset.create_account(ticker, this.pub_key));
+		return this.signer.submit(ConfidentialAsset.create_account(this.pub_key));
 	}
 }
 
@@ -220,17 +218,31 @@ fn init_account(user, ticker) {
 
 // Get user's incoming balance from the chain.
 fn get_enc_incoming_balance(ticker) {
-	return STORAGE.double_map(
-	  "ConfidentialAsset", "IncomingBalance",
-		this.pub_key, ticker,
-	);
+	let asset_id = get_asset_id(ticker);
+	if asset_id != () {
+		return STORAGE.double_map(
+		  "ConfidentialAsset", "IncomingBalance",
+			this.pub_key, asset_id,
+		);
+	}
 }
 
 // Get user's token balance from the chain.
 fn get_enc_balance(ticker) {
-	return STORAGE.double_map(
-	  "ConfidentialAsset", "AccountBalance",
-		this.pub_key, ticker,
+	let asset_id = get_asset_id(ticker);
+	if asset_id != () {
+		return STORAGE.double_map(
+		  "ConfidentialAsset", "AccountBalance",
+			this.pub_key, asset_id,
+		);
+	}
+}
+
+// Get the confidential account's identity.
+fn get_account_did() {
+	return STORAGE.map(
+	  "ConfidentialAsset", "AccountDid",
+		this.pub_key,
 	);
 }
 
@@ -367,9 +379,10 @@ fn create_venues(users) {
 }
 
 fn tx_mint_asset(ticker, amount) {
+	let asset_id = get_asset_id(ticker);
 	this.add_confidential_balance(ticker, amount);
 	return this.signer.submit(ConfidentialAsset.mint_confidential_asset(
-		ticker,
+		asset_id,
 		amount,
 		this.pub_key,
 	));
@@ -387,10 +400,11 @@ fn create_settlement(exchange, orders, sides) {
 		let sender = sides[order.sender];
 		let receiver = sides[order.receiver];
 		legs.push(#{
-			ticker: asset.ticker,
+			assets: [asset.asset_id],
 			sender: sender.pub_key,
 			receiver: receiver.pub_key,
-			auditors: asset.auditors,
+			auditors: [],
+			mediators: [],
 		});
 		leg_details.push(#{
 			asset: asset,
@@ -430,7 +444,7 @@ fn setup_exchanges(assets, exchanges) {
 	for (asset, idx) in assets {
 		let issuer = asset.issuer;
 		let mediator = asset.mediator;
-		let ticker = asset.ticker;
+		let asset_id = asset.asset_id;
 
 		let venues = [
 			issuer.venue_id,
@@ -440,7 +454,7 @@ fn setup_exchanges(assets, exchanges) {
 		}
 		venues += exchange_venues;
 
-		results += issuer.signer.submit(ConfidentialAsset.allow_venues(ticker, venues));
+		results += issuer.signer.submit(ConfidentialAsset.allow_venues(asset_id, venues));
 	}
 	return results;
 }
@@ -450,7 +464,8 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 
 	// Initialize the users confidential accounts.
 	let results = init_accounts(users, asset.ticker);
-	p::wait_for_finalized(results);
+	//p::wait_for_finalized(results);
+	p::wait_for_in_block(results);
 
 	// Create settlements.
 	let settlements = [];
@@ -557,10 +572,15 @@ fn sender_affirm_settlement() {
 		//print(`sender_proof = ${sender_proof}`);
 		sender.sub_confidential_balance(asset.ticker, sender_proof.sender_amount);
 		//print("Sender affirms with sender_proof");
-		results += sender.signer.submit(ConfidentialAsset.affirm_transaction(
-			transaction_id,
-			#{ leg_id: leg_id, party: #{ Sender: sender_proof }}
-		));
+		results += sender.signer.submit(ConfidentialAsset.affirm_transactions([#{
+			id: transaction_id,
+			leg: #{ leg_id: leg_id, party: #{
+					Sender: #{
+						proofs: [[asset.asset_id, sender_proof]],
+					}
+				}
+			}
+		}]));
 	}
 	if results.len() > 0 {
 		this.prev_tx = results[0];
@@ -597,10 +617,10 @@ fn receiver_affirm_settlement() {
 	// Affirm the settlement with all parties.
 	for (leg, leg_id) in this.leg_details {
 		// Receiver affirms.
-		results += leg.receiver.signer.submit(ConfidentialAsset.affirm_transaction(
-			transaction_id,
-			#{ leg_id: leg_id, party: #{ Receiver: () }}
-		));
+		results += leg.receiver.signer.submit(ConfidentialAsset.affirm_transactions([#{
+			id: transaction_id,
+			leg: #{ leg_id: leg_id, party: #{ Receiver: () }}
+		}]));
 	}
 	if results.len() > 0 {
 		this.prev_tx = results[0];
@@ -635,10 +655,10 @@ fn mediator_affirm_settlement() {
 		// Mediator affirms.
 		let mediator = leg.asset.mediator;
 		if mediator != () {
-			results += mediator.signer.submit(ConfidentialAsset.affirm_transaction(
-				transaction_id,
-				#{ leg_id: leg_id, party: #{ Mediator: mediator.pub_key }}
-			));
+			results += mediator.signer.submit(ConfidentialAsset.affirm_transactions([#{
+				id: transaction_id,
+				leg: #{ leg_id: leg_id, party: #{ Mediator: () }},
+			}]));
 		}
 	}
 	if results.len() > 0 {

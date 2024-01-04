@@ -283,11 +283,10 @@ pub fn hex_to_string<T: Encode>(val: &mut T) -> String {
 
 pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<EvalAltResult>> {
   types_registry.add_init(|types, _rpc, _hash| {
-    types.vec_encoded::<ConfidentialTransferProof>("pallet_confidential_asset::SenderProof")?;
-    // Don't use vec wrapper for `ConfidentialAccount` or `CipherText`.
+    types.register_scale_type::<ConfidentialTransferProof>("confidential_assets::transaction::ConfidentialTransferProof")?;
     types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::ConfidentialAccount")?;
-    types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::MediatorAccount")?;
-    types.register_scale_type::<CipherText>("pallet_confidential_asset::elgamal::CipherText")?;
+    types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::AuditorAccount")?;
+    types.register_scale_type::<CipherText>("confidential_assets::elgamal::CipherText")?;
     types.register_scale_type::<CipherText>("CipherText")?;
 
     Ok(())
