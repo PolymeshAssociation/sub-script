@@ -41,6 +41,8 @@ pub struct RuntimeVersion {
   pub impl_version: u32,
   #[serde(default)]
   pub transaction_version: u32,
+  #[serde(default)]
+  pub state_version: u32,
 
   #[serde(flatten)]
   pub extra: HashMap<String, Value>,
@@ -997,6 +999,9 @@ pub fn init_engine(
     .register_get("implName", |v: &mut RuntimeVersion| v.impl_name.to_string())
     .register_get("implVersion", |v: &mut RuntimeVersion| {
       v.impl_version as INT
+    })
+    .register_get("stateVersion", |v: &mut RuntimeVersion| {
+      v.state_version as INT
     })
     .register_get("transactionVersion", |v: &mut RuntimeVersion| {
       v.transaction_version as INT
