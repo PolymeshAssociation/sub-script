@@ -94,6 +94,7 @@ while block_number <= end_block {
 		let count_extrinsics_success = 0;
 		let count_non_confidential = 0;
 		let count_confidential = 0;
+		let count_events = #{};
 		for (event, event_idx) in events {
 			// Get the extrinsic index.
 			let extrinsic_idx = 0;
@@ -143,13 +144,27 @@ while block_number <= end_block {
 				}
 				//print(` -- mod=${module_id}, event=${event_id}, attr=${attributes}`);
 			}
-			if module_id == "Settlement" && event_id == "InstructionExecuted" {
-				count_non_confidential += 1;
-				total_non_confidential += 1;
+			let count_this_event = false;
+			if module_id == "Settlement" {
+			  if event_id == "InstructionExecuted" {
+					count_non_confidential += 1;
+					total_non_confidential += 1;
+				}
+				count_this_event = true;
 			}
-			if module_id == "ConfidentialAsset" && event_id == "TransactionExecuted" {
-				count_confidential += 1;
-				total_confidential += 1;
+			if module_id == "ConfidentialAsset" {
+				if event_id == "TransactionExecuted" {
+					count_confidential += 1;
+					total_confidential += 1;
+				}
+				count_this_event = true;
+			}
+			if count_this_event {
+				let count = count_events[event_id];
+				if count == () {
+					count = 0;
+				}
+				count_events[event_id] = count + 1;
 			}
 			let weight = ();
 			if info != () {
@@ -165,6 +180,7 @@ while block_number <= end_block {
 		print(`${block.block_number}: % filled=${block_percent}, extrinsics=${count_extrinsics} success=${count_extrinsics_success}, failed=${count_extrinsics_error}`);
 		// Empty blocks only have one `Timestamp` call.
 		if count_extrinsics > 0 {
+			print(`  -- ${block.block_number}: ${count_events}`);
 			non_empty_blocks += 1;
 		}
 		counter += 1;
