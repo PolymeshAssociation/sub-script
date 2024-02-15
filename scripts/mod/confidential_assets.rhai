@@ -86,11 +86,71 @@ fn create_coin_batch(prefix, offset, count, supply, polyx, init_assets) {
 	return create_assets(tickers, #{ StableCoin: () }, supply, polyx, false, init_assets);
 }
 
+fn bytes_to_hex(bytes) {
+	return "0x" + bytes.reduce(|hex, b| {
+		let b = b.to_hex();
+		if b.len() == 1 {
+			b = "0" + b;
+		}
+		hex + b
+	});
+}
+
+fn get_all_assets_details() {
+	let details = #{};
+	let paged = STORAGE.map_paged("ConfidentialAsset", "Details");
+	paged.set_page_count(100);
+	do {
+		let key_values = paged.next_key_values();
+		if key_values == () {
+			break;
+		}
+		for pair in key_values {
+			let asset_id = bytes_to_hex(pair.key);
+			details[asset_id] = pair.value;
+		}
+	} while paged.has_more;
+	return details;
+}
+
+fn build_ticker_to_asset_id_map() {
+	let tickers = #{};
+	let paged = STORAGE.map_paged("ConfidentialAsset", "Details");
+	paged.set_page_count(100);
+	do {
+		let key_values = paged.next_key_values();
+		if key_values == () {
+			break;
+		}
+		for pair in key_values {
+			let asset_id = bytes_to_hex(pair.key);
+			let details = pair.value;
+			let ticker = details.data;
+			if ticker.len() > 0 {
+				let ticker = bytes_to_hex(ticker);
+				//print(`${ticker} = ${asset_id}`);
+				tickers[ticker] = asset_id;
+			}
+		}
+	} while paged.has_more;
+	print(`Build ticker to assetId map: length=${tickers.len()}`);
+	return tickers;
+}
+const ASSET_MAP = build_ticker_to_asset_id_map();
+
 fn get_asset_id(ticker) {
-	return STORAGE.map(
-	  "ConfidentialAsset", "TickerToAsset",
-		ticker,
-	);
+	let hex = bytes_to_hex(ticker.to_blob().to_array());
+	return global::ASSET_MAP[hex];
+}
+
+fn tickers_to_asset_ids(tickers) {
+	let lookup = global::ASSET_MAP;
+	let ids = [];
+	for ticker in tickers {
+		let hex = bytes_to_hex(ticker.to_blob().to_array());
+		ids += lookup[hex];
+	}
+	return ids;
 }
 
 // Create a confidential asset, issuer and mediator.
@@ -143,16 +203,18 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		let asset_id = ();
 		if init_assets {
 			//print(` --- mint[${ticker}]: amount=${supply}`);
-			issuer.add_confidential_balance(ticker, supply);
 			let create_res = issuer.signer.submit(Utility.force_batch([
-				ConfidentialAsset.create_confidential_asset(ticker, [], auditors),
+				ConfidentialAsset.create_confidential_asset((), ticker, auditors),
 				ConfidentialAsset.create_account(pub_key),
 			]));
 			// Wait for asset to be created.
 			if !create_res.is_success {
 				print(`Failed to create asset[${ticker}]: ${create_res.result()}`);
 			}
-			asset_id = get_asset_id(ticker);
+			for event in create_res.events("ConfidentialAsset.ConfidentialAssetCreated") {
+				asset_id = bytes_to_hex(event.args[1]);
+			}
+			issuer.add_confidential_balance(asset_id, supply);
 			results += issuer.signer.submit(ConfidentialAsset.mint_confidential_asset(
 				asset_id,
 				supply / 1000000.0,
@@ -161,9 +223,9 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 		} else {
 			asset_id = get_asset_id(ticker);
 			// Init local copy of encrypted balance.
-			issuer.get_confidential_balance(ticker);
+			issuer.get_confidential_balance(asset_id);
 		}
-		asset_auditors[ticker] = auditors;
+		asset_auditors[asset_id] = auditors;
 		assets.push(#{
 			asset_id: asset_id,
 			ticker: ticker,
@@ -192,50 +254,42 @@ fn auditors_keys() {
 	return keys;
 }
 
-fn init_accounts(users, ticker) {
+fn init_accounts(users) {
 	let results = [];
 	for (user, idx) in users {
 		let did = user.get_account_did();
 		if did == () {
-			user.update_confidential_balance(ticker, 0.0);
 			results += user.signer.submit(ConfidentialAsset.create_account(user.pub_key));
 		}
 	}
 	return results;
 }
 
-fn init_account(ticker) {
+fn init_account() {
 	let did = this.get_account_did();
 	if did == () {
-		this.update_confidential_balance(ticker, 0.0);
 		return this.signer.submit(ConfidentialAsset.create_account(this.pub_key));
 	}
 }
 
-fn init_account(user, ticker) {
-	return user.init_account(ticker);
+fn init_account(user) {
+	return user.init_account();
 }
 
 // Get user's incoming balance from the chain.
-fn get_enc_incoming_balance(ticker) {
-	let asset_id = get_asset_id(ticker);
-	if asset_id != () {
-		return STORAGE.double_map(
-		  "ConfidentialAsset", "IncomingBalance",
-			this.pub_key, asset_id,
-		);
-	}
+fn get_enc_incoming_balance(asset_id) {
+	return STORAGE.double_map(
+	  "ConfidentialAsset", "IncomingBalance",
+		this.pub_key, asset_id,
+	);
 }
 
 // Get user's token balance from the chain.
-fn get_enc_balance(ticker) {
-	let asset_id = get_asset_id(ticker);
-	if asset_id != () {
-		return STORAGE.double_map(
-		  "ConfidentialAsset", "AccountBalance",
-			this.pub_key, asset_id,
-		);
-	}
+fn get_enc_balance(asset_id) {
+	return STORAGE.double_map(
+	  "ConfidentialAsset", "AccountBalance",
+		this.pub_key, asset_id,
+	);
 }
 
 // Get the confidential account's identity.
@@ -246,14 +300,14 @@ fn get_account_did() {
 	);
 }
 
-fn get_confidential_balance(ticker) {
-	let asset = this.balances[ticker];
+fn get_confidential_balance(asset_id) {
+	let asset = this.balances[asset_id];
 	if asset == () {
 		asset = #{};
 	}
 	// Get user's token balance from the chain.
 	if asset.enc == () {
-		let enc = this.get_enc_balance(ticker);
+		let enc = this.get_enc_balance(asset_id);
 		if enc == () {
 			asset.enc = new_CipherText();
 			asset.balance = 0.0;
@@ -263,28 +317,28 @@ fn get_confidential_balance(ticker) {
 		}
 	}
 	//print(`${this}'s balance = ${asset.balance}`);
-	this.balances[ticker] = asset;
+	this.balances[asset_id] = asset;
 	return asset;
 }
 
-fn get_confidential_balance(user, ticker) {
-	return user.get_confidential_balance(ticker);
+fn get_confidential_balance(user, asset_id) {
+	return user.get_confidential_balance(asset_id);
 }
 
-fn add_confidential_balance(ticker, amount) {
-	return this.update_confidential_balance(ticker, amount, "add");
+fn add_confidential_balance(asset_id, amount) {
+	return this.update_confidential_balance(asset_id, amount, "add");
 }
 
-fn sub_confidential_balance(ticker, amount) {
-	return this.update_confidential_balance(ticker, amount, "sub");
+fn sub_confidential_balance(asset_id, amount) {
+	return this.update_confidential_balance(asset_id, amount, "sub");
 }
 
-fn update_confidential_balance(ticker, amount) {
-	return this.update_confidential_balance(ticker, amount, "add");
+fn update_confidential_balance(asset_id, amount) {
+	return this.update_confidential_balance(asset_id, amount, "add");
 }
 
-fn update_confidential_balance(ticker, amount, action) {
-	let asset = this.get_confidential_balance(ticker);
+fn update_confidential_balance(asset_id, amount, action) {
+	let asset = this.get_confidential_balance(asset_id);
 	//print(`Update balance: ${this}, balance=${asset.balance}, amount=${amount}, action=${action}`);
 	switch action {
 		"add" => {
@@ -296,7 +350,7 @@ fn update_confidential_balance(ticker, amount, action) {
 	}
 	asset.balance = this.decrypt_balance(asset.enc);
 	//print(`${this}'s balance updated = ${asset.balance}`);
-	this.balances[ticker] = asset;
+	this.balances[asset_id] = asset;
 	return asset;
 }
 
@@ -378,9 +432,8 @@ fn create_venues(users) {
 	return users.init_venues_full(false);
 }
 
-fn tx_mint_asset(ticker, amount) {
-	let asset_id = get_asset_id(ticker);
-	this.add_confidential_balance(ticker, amount);
+fn tx_mint_asset(asset_id, amount) {
+	this.add_confidential_balance(asset_id, amount);
 	return this.signer.submit(ConfidentialAsset.mint_confidential_asset(
 		asset_id,
 		amount,
@@ -463,7 +516,7 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 	let exchange = asset.issuer;
 
 	// Initialize the users confidential accounts.
-	let results = init_accounts(users, asset.ticker);
+	let results = init_accounts(users);
 	//p::wait_for_finalized(results);
 	p::wait_for_in_block(results);
 
@@ -475,7 +528,7 @@ fn setup_asset_fund_users(asset, from, users, amount) {
 		sides += receivers;
 		let orders = [];
 		for receiver in receivers {
-			let receiver_balance = receiver.get_confidential_balance(asset.ticker);
+			let receiver_balance = receiver.get_confidential_balance(asset.asset_id);
 			// Only fund the receiver if their current balance is less then the amount.
 			if receiver_balance.balance < amount {
 				let idx = sides.len();
@@ -558,7 +611,7 @@ fn sender_affirm_settlement() {
 		let auditors = asset.auditors_keys();
 		let amount = leg.amount;
 		// Get Sender's balance from the chain.
-		let sender_balance = sender.get_confidential_balance(asset.ticker);
+		let sender_balance = sender.get_confidential_balance(asset.asset_id);
 		//print(`sender_proof: amount=${amount}, sender_balance=${sender_balance.balance}`);
 
 		// Sender affirms.
@@ -570,7 +623,7 @@ fn sender_affirm_settlement() {
 				sender_balance.balance,
 			);
 		//print(`sender_proof = ${sender_proof}`);
-		sender.sub_confidential_balance(asset.ticker, sender_proof.sender_amount);
+		sender.sub_confidential_balance(asset.asset_id, sender_proof.sender_amount);
 		//print("Sender affirms with sender_proof");
 		results += sender.signer.submit(ConfidentialAsset.affirm_transactions([#{
 			id: transaction_id,
@@ -765,15 +818,15 @@ fn apply_incoming_settlement() {
 
 	// Apply incoming balance to all receiver's accounts.
 	for leg in this.leg_details {
-		let ticker = leg.asset.ticker;
+		let asset_id = leg.asset.asset_id;
 		let receiver = leg.receiver;
 
 		// Receiver apply incoming balance.
-		let incoming = receiver.get_enc_incoming_balance(ticker);
+		let incoming = receiver.get_enc_incoming_balance(asset_id);
 		if incoming != () {
-			receiver.add_confidential_balance(ticker, incoming);
+			receiver.add_confidential_balance(asset_id, incoming);
 			results += receiver.signer.submit(
-				ConfidentialAsset.apply_incoming_balance(receiver.pub_key, ticker)
+				ConfidentialAsset.apply_incoming_balance(receiver.pub_key, asset_id)
 			);
 		}
 	}
