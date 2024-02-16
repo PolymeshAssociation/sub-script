@@ -202,20 +202,20 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 
 		let asset_id = ();
 		if init_assets {
-			//print(` --- mint[${ticker}]: amount=${supply}`);
 			let create_res = issuer.signer.submit(Utility.force_batch([
-				ConfidentialAsset.create_confidential_asset((), ticker, auditors),
+				ConfidentialAsset.create_asset(ticker, auditors),
 				ConfidentialAsset.create_account(pub_key),
 			]));
 			// Wait for asset to be created.
 			if !create_res.is_success {
 				print(`Failed to create asset[${ticker}]: ${create_res.result()}`);
 			}
-			for event in create_res.events("ConfidentialAsset.ConfidentialAssetCreated") {
+			for event in create_res.events("ConfidentialAsset.AssetCreated") {
 				asset_id = bytes_to_hex(event.args[1]);
 			}
+			//print(` --- mint[${ticker}]: amount=${supply}`);
 			issuer.add_confidential_balance(asset_id, supply);
-			results += issuer.signer.submit(ConfidentialAsset.mint_confidential_asset(
+			results += issuer.signer.submit(ConfidentialAsset.mint(
 				asset_id,
 				supply / 1000000.0,
 				pub_key,
@@ -434,7 +434,7 @@ fn create_venues(users) {
 
 fn tx_mint_asset(asset_id, amount) {
 	this.add_confidential_balance(asset_id, amount);
-	return this.signer.submit(ConfidentialAsset.mint_confidential_asset(
+	return this.signer.submit(ConfidentialAsset.mint(
 		asset_id,
 		amount,
 		this.pub_key,
