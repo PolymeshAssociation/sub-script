@@ -12,14 +12,14 @@ if prefix == () {
 
 let results = [];
 
-fn setup_user(name, polyx, ticker) {
+fn setup_user(name, polyx, asset_id) {
 	let user = ca::create_user(name, polyx);
-	user.ticker = ticker;
+	user.asset_id = asset_id;
 	return user;
 }
 
 fn get_confidential_balance() {
-	let asset = ca::get_confidential_balance(this, this.ticker);
+	let asset = ca::get_confidential_balance(this, this.asset_id);
 	print(`${this}'s balance = ${asset.balance}`);
 	return asset;
 }
@@ -28,18 +28,19 @@ fn get_confidential_balance() {
 let ticker = `${prefix}T`;
 let total_supply = 1_000.0;
 let asset = ca::create_asset(ticker, total_supply);
+let asset_id = asset.asset_id;
 let issuer = asset.issuer;
-issuer.ticker = ticker;
+issuer.asset_id = asset_id;
 let mediator = asset.mediator;
 
 // Test investor.
-let investor = setup_user(`${prefix}_investor`, 100000.0, ticker);
+let investor = setup_user(`${prefix}_investor`, 100000.0, asset_id);
 
 //
 // Setup confidential accounts
 //
 
-results += ca::init_account(investor, ticker);
+results += ca::init_account(investor);
 
 //
 // Transaction state management.

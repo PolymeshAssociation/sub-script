@@ -86,8 +86,10 @@ fn get_balances(users) {
 	});
 }
 
+const RT = CLIENT.get_block_runtime_version(());
 const TX_VERSION = CLIENT.get_transaction_version();
 const SPEC_VERSION = CLIENT.get_spec_version();
+const SPEC_NAME = RT.specName;
 
 fn key_records_did(rec) {
 	if rec == () {
@@ -106,23 +108,15 @@ fn key_records_did(rec) {
 
 // get user's identity id.
 fn get_did(user) {
-	if global::TX_VERSION < 3 {
-		return STORAGE.map("Identity", "KeyToIdentityIds", user.acc);
-	} else {
-		let rec = STORAGE.map("Identity", "KeyRecords", user.acc);
-		return key_records_did(rec);
-	}
+	let rec = STORAGE.map("Identity", "KeyRecords", user.acc);
+	return key_records_did(rec);
 }
 
 // get multiple user's identity id.
 fn get_dids(users) {
 	let accounts = get_accounts(users);
-	if global::TX_VERSION < 3 {
-		return STORAGE.map_keys("Identity", "KeyToIdentityIds", accounts);
-	} else {
-		return STORAGE.map_keys("Identity", "KeyRecords", accounts)
-			.map(|rec| key_records_did(rec));
-	}
+	return STORAGE.map_keys("Identity", "KeyRecords", accounts)
+		.map(|rec| key_records_did(rec));
 }
 
 fn dev_users() {
@@ -218,11 +212,7 @@ fn mock_users(users, balance, gen_dids) {
 		if dids != () {
 			let did = dids[idx];
 			if did == () {
-				if global::SPEC_VERSION < 3000 {
-					calls += Identity.mock_cdd_register_did(user);
-				} else {
-					calls += TestUtils.mock_cdd_register_did(user);
-				}
+				calls += Identity.cdd_register_did_with_cdd(user, [], ());
 			}
 		}
 		if cur_bals != () {
@@ -234,7 +224,7 @@ fn mock_users(users, balance, gen_dids) {
 		}
 	}
 
-	let results = cdd_user.execute_force_batch(calls, 200);
+	let results = cdd_user.execute_force_batch(calls, 800);
 	print("MockUsers: Wait for batch results");
 	wait_for_in_block(results);
 	return users;
@@ -262,6 +252,11 @@ fn execute_batch(calls, max_batch_size, batch_type) {
 			"Atomic" => Utility.batch_all(batch_calls),
 			_ => Utility.batch(batch_calls),
 		};
+		// Can't have too many pending txs on one single connection.
+		if results.len() > 4 {
+			wait_for_in_block(results);
+			results = [];
+		}
 		results += this.submit(batch_call);
 	}
 	return results;
@@ -362,21 +357,11 @@ fn tickers_to_issuers(tickers) {
 }
 
 fn call_asset_create_asset(name, ticker, divisible, asset_type, idents, funding, disable_iu) {
-	if global::SPEC_VERSION < 5003000 {
-		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding, disable_iu);
-	} else if global::SPEC_VERSION < 6000000 {
-		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding, true);
-	} else {
-		return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding);
-	}
+	return Asset.create_asset(name, ticker, divisible, asset_type, idents, funding);
 }
 
 fn call_asset_issue(ticker, supply, portfolio_kind) {
-	if global::SPEC_VERSION < 6000000 {
-		return Asset.issue(ticker, supply);
-	} else {
-		return Asset.issue(ticker, supply, portfolio_kind);
-	}
+	return Asset.issue(ticker, supply, portfolio_kind);
 }
 
 // Create assets.
@@ -464,28 +449,13 @@ fn validate_investor_uniqueness_claim(target, claim, proof) {
 }
 
 fn add_investor_uniqueness_claim(user, ticker, uid) {
-	if global::SPEC_VERSION >= 6000000 {
-		// Not supported in v6.0.
-		return [];
-	}
-	let did = get_did(user);
-	if uid == () {
-		uid = PolymeshUtils.did_to_uid(did);
-	}
-	// Create investor uniqueness claim & proof.
-	let claim = PolymeshUtils.create_investor_uniqueness(did, ticker, uid);
-	//print(`claim = ${claim}`);
-	
-	// Add Investor Uniqueness claim.
-	return user.submit(Identity.add_investor_uniqueness_claim(did, claim[0], claim[1], ()));
+	// Not supported
+	return [];
 }
 
 // get a list of the user's venues.
 fn get_user_venues(user) {
 	let did = get_did(user);
-	if global::SPEC_VERSION < 6000000 {
-		return STORAGE.map("Settlement", "UserVenues", did);
-	}
 	let paged = STORAGE.double_paged("Settlement", "UserVenues", did);
 	paged.set_page_count(500);
 	let venues = [];
@@ -568,51 +538,30 @@ fn get_or_create_venue(user, venue_type) {
 }
 
 fn fungible_leg(sender, receiver, ticker, amount) {
-	if global::SPEC_VERSION < 6000000 {
-		return #{
-			from: sender,
-			to: receiver,
-			asset: ticker,
+	return #{
+		Fungible: #{
+			sender: sender,
+			receiver: receiver,
+			ticker: ticker,
 			amount: amount,
-		};
-	} else {
-		return #{
-			Fungible: #{
-				sender: sender,
-				receiver: receiver,
-				ticker: ticker,
-				amount: amount,
-			}
-		};
-	}
+		}
+	};
 }
 
 fn call_settlement_add_and_affirm(venue_id, s_type, legs, portfolios, memo) {
-	if global::SPEC_VERSION < 6000000 {
-		return Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, portfolios);
-	} else {
-		return Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, portfolios, memo);
-	}
+	return Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, portfolios, memo);
 }
 
 fn call_settlement_add(venue_id, s_type, legs, memo) {
-	if global::SPEC_VERSION < 6000000 {
-		return Settlement.add_instruction(venue_id, s_type, (), (), legs);
-	} else {
-		return Settlement.add_instruction(venue_id, s_type, (), (), legs, memo);
-	}
+	return Settlement.add_instruction(venue_id, s_type, (), (), legs, memo);
 }
 
 fn setup_asset_fund_users(ticker, from, users, amount) {
 	// Get or create venue.
 	let venue_id = get_or_create_venue(from, #{ Other: () });
 
-	let s_type = #{ SettleOnAffirmation: () };
-	let is_manual = false;
-	if global::SPEC_VERSION >= 5002000 {
-		s_type = #{ SettleManual: 0 };
-		is_manual = true;
-	}
+	let s_type = #{ SettleManual: 0 };
+	let is_manual = true;
 	// Create settlements.
 	let settlements = [];
 	let from_did = get_did(from);
@@ -662,12 +611,8 @@ fn asset_fund_users(ticker, from, users, amount) {
 }
 
 fn create_settlement(exchange, venue_id, orders, sides) {
-	let s_type = #{ SettleOnAffirmation: () };
-	let is_manual = false;
-	if global::SPEC_VERSION >= 5002000 {
-		s_type = #{ SettleManual: 0 };
-		is_manual = true;
-	}
+	let s_type = #{ SettleManual: 0 };
+	let is_manual = true;
 	let side_counts = [];
 	for side in sides {
 		side_counts += #{
@@ -742,9 +687,7 @@ fn affirm_settlement(settlement) {
 	let leg_count = settlement.leg_count;
 	let side_counts = settlement.side_counts;
 	for (side, idx) in settlement.sides {
-		if global::SPEC_VERSION < 6000000 {
-			results += side.user.submit(Settlement.affirm_instruction(instruction_id, [side.portfolio], leg_count));
-		} else if side_counts != () {
+		if side_counts != () {
 			let counts = side_counts[idx];
 			results += side.user.submit(Settlement.affirm_instruction_with_count(instruction_id, [side.portfolio], counts));
 		} else {
@@ -769,20 +712,10 @@ fn execute_settlement(settlement) {
 		return [];
 	}
 
-	if global::SPEC_VERSION < 5002000 {
-		// manual execution not supported.
-		return [];
-	}
 	// Execute the settlement.
-	if global::SPEC_VERSION < 6000000 {
-		return settlement.venue_user.submit(
-			Settlement.execute_manual_instruction(instruction_id, settlement.leg_count, ())
-		);
-	} else {
-		return settlement.venue_user.submit(
-			Settlement.execute_manual_instruction(instruction_id, (), settlement.leg_count, 0, 0, ())
-		);
-	}
+	return settlement.venue_user.submit(
+		Settlement.execute_manual_instruction(instruction_id, (), settlement.leg_count, 0, 0, ())
+	);
 }
 
 fn execute_settlements(settlements) {

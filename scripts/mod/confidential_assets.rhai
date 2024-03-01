@@ -140,7 +140,11 @@ const ASSET_MAP = build_ticker_to_asset_id_map();
 
 fn get_asset_id(ticker) {
 	let hex = bytes_to_hex(ticker.to_blob().to_array());
-	return global::ASSET_MAP[hex];
+	let asset_id = global::ASSET_MAP[hex];
+	if asset_id == () {
+		print(`Failed to find asset_id for ticker "${ticker}"`);
+	}
+	return asset_id;
 }
 
 fn tickers_to_asset_ids(tickers) {
@@ -172,8 +176,6 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 	let issuers = create_users(names, polyx);
 	let mediators = issuers.split(tickers.len());
 
-	let results = [];
-
 	// Create a venue for each mediator.
 	mediators.init_venues_full(false);
 	// Create a venue for each issuer.
@@ -182,10 +184,10 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 	let assets = [];
 	let asset_auditors = #{};
 	// Create assets.
+	let results = [];
 	for (ticker, idx) in tickers {
 		let issuer = issuers[idx];
 		let mediator = mediators[idx];
-		let pub_key = issuer.pub_key;
 
 		let mediators = [];
 		let auditor_pub_key = mediator.pub_key;
@@ -200,39 +202,53 @@ fn create_assets(tickers, asset_type, supply, polyx, require_mediator, init_asse
 			mediators: mediators,
 		};
 
+		let result = ();
+		if init_assets {
+			result = issuer.signer.submit(Utility.force_batch([
+				ConfidentialAsset.create_asset(ticker, auditors),
+				ConfidentialAsset.create_account(issuer.pub_key),
+			]));
+		}
+		assets.push(#{
+			ticker: ticker,
+			issuer: issuer,
+			mediator: mediator,
+			auditors: auditors,
+			create_result: result,
+		});
+	}
+	// Wait for all create asset results.
+	print("CreateConfidentialAssets: Wait for create asset batch results");
+	for (asset, idx) in assets {
+		let issuer = asset.issuer;
+		let ticker = asset.ticker;
+
 		let asset_id = ();
 		if init_assets {
-			let create_res = issuer.signer.submit(Utility.force_batch([
-				ConfidentialAsset.create_asset(ticker, auditors),
-				ConfidentialAsset.create_account(pub_key),
-			]));
+			let create_res = asset.create_result;
+			asset.create_result = ();
 			// Wait for asset to be created.
-			if !create_res.is_success {
-				print(`Failed to create asset[${ticker}]: ${create_res.result()}`);
-			}
-			for event in create_res.events("ConfidentialAsset.AssetCreated") {
-				asset_id = bytes_to_hex(event.args[1]);
-			}
+    	if !create_res.is_success {
+    	  print(`Failed to create asset[${ticker}]: ${create_res.result()}`);
+    	}
+    	for event in create_res.events("ConfidentialAsset.AssetCreated") {
+    	  asset_id = bytes_to_hex(event.args[1]);
+    	}
 			//print(` --- mint[${ticker}]: amount=${supply}`);
 			issuer.add_confidential_balance(asset_id, supply);
 			results += issuer.signer.submit(ConfidentialAsset.mint(
 				asset_id,
 				supply / 1000000.0,
-				pub_key,
+				issuer.pub_key,
 			));
 		} else {
 			asset_id = get_asset_id(ticker);
 			// Init local copy of encrypted balance.
 			issuer.get_confidential_balance(asset_id);
 		}
-		asset_auditors[asset_id] = auditors;
-		assets.push(#{
-			asset_id: asset_id,
-			ticker: ticker,
-			issuer: issuer,
-			mediator: mediator,
-			auditors: auditors,
-		});
+		asset.asset_id = asset_id;
+		asset_auditors[asset_id] = asset.auditors;
+		assets[idx] = asset;
 	}
 	// Wait for all results.
 	if init_assets {
@@ -447,11 +463,23 @@ fn create_settlement(exchange, orders, sides) {
 	// Create settlements.
 	let legs = [];
 	let leg_details = [];
+	let sender_batch = [];
+	let batch_lookup = #{};
 
 	for order in orders {
 		let asset = order.asset;
+		let sender_id = `${order.sender}`;
 		let sender = sides[order.sender];
 		let receiver = sides[order.receiver];
+		let leg_id = legs.len();
+		let batch_id = batch_lookup[sender_id];
+		if batch_id == () {
+			batch_id = sender_batch.len();
+			batch_lookup[sender_id] = batch_id;
+			sender_batch.push([leg_id]);
+		} else {
+			sender_batch[batch_id].push(leg_id);
+		}
 		legs.push(#{
 			assets: [asset.asset_id],
 			sender: sender.pub_key,
@@ -472,6 +500,7 @@ fn create_settlement(exchange, orders, sides) {
 		leg_count: legs.len(),
 		venue_user: exchange,
 		leg_details: leg_details,
+		sender_batch: sender_batch,
 	};
 }
 
@@ -603,37 +632,43 @@ fn sender_affirm_settlement() {
 		return [];
 	}
 
-	// Sender affirms the settlement.
-	for (leg, leg_id) in this.leg_details {
-		let asset = leg.asset;
-		let sender = leg.sender;
-		let receiver = leg.receiver;
-		let auditors = asset.auditors_keys();
-		let amount = leg.amount;
-		// Get Sender's balance from the chain.
-		let sender_balance = sender.get_confidential_balance(asset.asset_id);
-		//print(`sender_proof: amount=${amount}, sender_balance=${sender_balance.balance}`);
+	// Sender affirms the settlement using batching.
+	for batch in this.sender_batch {
+		let affirms = [];
+		let sender = ();
+		for leg_id in batch {
+			let leg = this.leg_details[leg_id];
+			let asset = leg.asset;
+			sender = leg.sender;
+			let receiver = leg.receiver;
+			let auditors = asset.auditors_keys();
+			let amount = leg.amount;
+			// Get Sender's balance from the chain.
+			let sender_balance = sender.get_confidential_balance(asset.asset_id);
+			//print(`sender_proof: amount=${amount}, sender_balance=${sender_balance.balance}`);
 
-		// Sender affirms.
-		let sender_proof = sender.create_sender_proof(
-				receiver.pub_key,
-				auditors,
-				amount,
-				sender_balance.enc,
-				sender_balance.balance,
-			);
-		//print(`sender_proof = ${sender_proof}`);
-		sender.sub_confidential_balance(asset.asset_id, sender_proof.sender_amount);
-		//print("Sender affirms with sender_proof");
-		results += sender.signer.submit(ConfidentialAsset.affirm_transactions([#{
-			id: transaction_id,
-			leg: #{ leg_id: leg_id, party: #{
-					Sender: #{
-						proofs: [[asset.asset_id, sender_proof]],
+			// Sender affirms.
+			let sender_proof = sender.create_sender_proof(
+					receiver.pub_key,
+					auditors,
+					amount,
+					sender_balance.enc,
+					sender_balance.balance,
+				);
+			//print(`sender_proof = ${sender_proof}`);
+			sender.sub_confidential_balance(asset.asset_id, sender_proof.sender_amount);
+			//print("Sender affirms with sender_proof");
+			affirms.push(#{
+				id: transaction_id,
+				leg: #{ leg_id: leg_id, party: #{
+						Sender: #{
+							proofs: [[asset.asset_id, sender_proof]],
+						}
 					}
 				}
-			}
-		}]));
+			});
+		}
+		results += sender.signer.submit(ConfidentialAsset.affirm_transactions(affirms));
 	}
 	if results.len() > 0 {
 		this.prev_tx = results[0];
