@@ -3,8 +3,9 @@ use std::str::FromStr;
 use parity_scale_codec::{Compact, Decode, Encode};
 use sp_core::{hashing::blake2_256, H256};
 use sp_runtime::{
-  generic::{self, Era},
+  generic::{self, Era, DigestItem},
   traits, MultiSignature,
+  ConsensusEngineId,
 };
 
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,13 @@ use crate::users::AccountId;
 
 pub type TxHash = H256;
 pub type BlockHash = H256;
+
+pub fn consensus_id_to_dynamic(id: ConsensusEngineId) -> Dynamic {
+  match std::str::from_utf8(&id[..]) {
+    Ok(id) => Dynamic::from(id.to_string()),
+    Err(_) => Dynamic::from_blob(id.to_vec()),
+  }
+}
 
 pub fn hash_from_dynamic(val: Dynamic) -> Option<BlockHash> {
   if val.is::<BlockHash>() {
@@ -376,6 +384,18 @@ impl Block {
     self.header.number as i64
   }
 
+  pub fn digest(&mut self) -> Dynamic {
+    Dynamic::from_array(self.header.digest.logs.iter().map(|item| {
+      match item {
+        DigestItem::PreRuntime(id, data) => Dynamic::from_array(vec![Dynamic::from("PreRuntime"), consensus_id_to_dynamic(*id), Dynamic::from_blob(data.clone())]),
+        DigestItem::Consensus(id, data) => Dynamic::from_array(vec![Dynamic::from("Consensus"), consensus_id_to_dynamic(*id), Dynamic::from_blob(data.clone())]),
+        DigestItem::Seal(id, data) => Dynamic::from_array(vec![Dynamic::from("Seal"), consensus_id_to_dynamic(*id), Dynamic::from_blob(data.clone())]),
+        DigestItem::Other(data) => Dynamic::from_array(vec![Dynamic::from("Other"), Dynamic::from_blob(data.clone())]),
+        DigestItem::RuntimeEnvironmentUpdated => Dynamic::from_array(vec![Dynamic::from("RuntimeEnvironmentUpdated")]),
+      }
+    }).collect())
+  }
+
   pub fn to_string(&mut self) -> String {
     format!("{:?}", self)
   }
@@ -492,6 +512,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
     .register_get("parent", Block::parent)
     .register_get("state_root", Block::state_root)
     .register_get("extrinsics_root", Block::extrinsics_root)
+    .register_get("digest", Block::digest)
     .register_get("block_number", Block::block_number)
     .register_fn("to_string", Block::to_string)
     .register_type_with_name::<ExtrinsicDetails>("ExtrinsicDetails")
