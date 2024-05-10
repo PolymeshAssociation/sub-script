@@ -79,7 +79,7 @@ impl InnerClient {
 
     let event_records = lookup.resolve("EventRecords");
     let account_info = lookup.resolve("AccountInfo");
-    let call_ty = lookup.resolve("Call");
+    let call_ty = lookup.resolve("RuntimeCall");
     Ok(Arc::new(Self {
       rpc,
       runtime_version,

@@ -331,7 +331,7 @@ impl Block {
             .ok()
             .map(|xt| {
               ExtrinsicV4::decode_call(call_ty, &mut &xt[..])
-                .map_err(|e| eprintln!("Call decode failed: {:?}", e))
+                .map_err(|e| eprintln!("Call decode failed: {:?}, xt={xthex:?}", e))
                 .ok()
             })
             .flatten()
@@ -340,6 +340,10 @@ impl Block {
         }
       },
     )
+  }
+
+  pub fn set_call_ty(&mut self, call_ty: TypeRef) {
+    self.call_ty = Some(call_ty);
   }
 
   pub fn extrinsics(&mut self) -> Dynamic {
@@ -366,6 +370,10 @@ impl Block {
         })
         .collect::<Vec<_>>(),
     )
+  }
+
+  pub fn hash(&mut self) -> BlockHash {
+    self.header.hash()
   }
 
   pub fn parent(&mut self) -> BlockHash {
@@ -508,6 +516,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
     .register_fn("to_string", |h: &mut BlockHeader| format!("{h:#?}"))
     .register_type_with_name::<Block>("Block")
     .register_get("extrinsics", Block::extrinsics)
+    .register_fn("set_call_ty", Block::set_call_ty)
     .register_fn("extrinsics_filtered", Block::extrinsics_filtered)
     .register_get("parent", Block::parent)
     .register_get("state_root", Block::state_root)

@@ -817,7 +817,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<RpcManager, Box<EvalAltResult>
           res
             .and_then(|signed| {
               let mut block = signed.block;
-              block.call_ty = Some(lookup.resolve("Call"));
+              block.call_ty = Some(lookup.resolve("RuntimeCall"));
               Some(Dynamic::from(block))
             })
             .unwrap_or(Dynamic::UNIT),
