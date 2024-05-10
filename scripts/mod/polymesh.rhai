@@ -230,19 +230,31 @@ fn mock_users(users, balance, gen_dids) {
 	return users;
 }
 
+fn execute_batch_all(user, calls, max_batch_size) {
+	return user.execute_batch_all(calls, max_batch_size);
+}
+
 fn execute_batch_all(calls, max_batch_size) {
-	return this.execute_batch(calls, max_batch_size, "Atomic");
+	return execute_batch(this, calls, max_batch_size, "Atomic");
+}
+
+fn execute_force_batch(user, calls, max_batch_size) {
+	return user.execute_force_batch(calls, max_batch_size);
 }
 
 fn execute_force_batch(calls, max_batch_size) {
-	return this.execute_batch(calls, max_batch_size, "Optimistic");
+	return execute_batch(this, calls, max_batch_size, "Optimistic");
+}
+
+fn execute_batch(user, calls, max_batch_size) {
+	return execute_batch(user, calls, max_batch_size, ());
 }
 
 fn execute_batch(calls, max_batch_size) {
-	return this.execute_batch(calls, max_batch_size, ());
+	return execute_batch(this, calls, max_batch_size, ());
 }
 
-fn execute_batch(calls, max_batch_size, batch_type) {
+fn execute_batch(user, calls, max_batch_size, batch_type) {
 	let results = [];
 	let batch_size = max_batch_size;
 	while calls.len() > 0 {
@@ -257,7 +269,7 @@ fn execute_batch(calls, max_batch_size, batch_type) {
 			wait_for_in_block(results);
 			results = [];
 		}
-		results += this.submit(batch_call);
+		results += user.submit(batch_call);
 	}
 	return results;
 }
