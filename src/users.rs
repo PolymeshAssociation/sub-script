@@ -222,7 +222,6 @@ impl Users {
 pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
   engine
     .register_type_with_name::<SharedUser>("User")
-    .register_result_fn("new_user_from_secret", Users::from_secret)
     .register_get("acc", SharedUser::acc)
     .register_get("nonce", SharedUser::nonce)
     .register_fn("to_string", SharedUser::to_string)
@@ -234,6 +233,7 @@ pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
     .register_fn("to_string", |acc: &mut AccountId| acc.to_string())
     .register_fn("==", |acc1: AccountId, acc2: AccountId| acc1 == acc2)
     .register_type_with_name::<Users>("Users")
+    .register_result_fn("new_user_from_secret", Users::from_secret)
     .register_fn("new_users", Users::new)
     .register_fn("find_by_account", Users::find_by_account)
     .register_indexer_get_result(Users::get_user);
