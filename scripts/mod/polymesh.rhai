@@ -132,12 +132,17 @@ fn dev_users() {
 }
 
 fn get_sudo_user() {
-	// Generate common dev users.  This is for the `USER.find_by_account` below.
-	dev_users();
+	try {
+		// Generate common dev users.  This is for the `USER.find_by_account` below.
+		dev_users();
 
-	let key = STORAGE.value("Sudo", "Key");
-	let sudo = USER.find_by_account(key);
-	return sudo;
+		let key = STORAGE.value("Sudo", "Key");
+		let sudo = USER.find_by_account(key);
+		return sudo;
+	} catch(err) {
+		// No Sudo.
+		return ();
+	}
 }
 
 const SUDO_USER = get_sudo_user();
