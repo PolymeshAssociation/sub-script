@@ -36,6 +36,18 @@ impl User {
     })
   }
 
+  fn from_secret(client: Client, secret: &str) -> Result<Self, Box<EvalAltResult>> {
+    let pair = sr25519::Pair::from_string(secret, None).map_err(|e| format!("{:?}", e))?;
+    let account = AccountId::new(pair.public().into());
+    Ok(Self {
+      name: format!("{:?}", account),
+      pair,
+      account,
+      nonce: 0u32,
+      client,
+    })
+  }
+
   pub fn public(&self) -> sr25519::Public {
     self.pair.public()
   }
@@ -149,6 +161,14 @@ impl InnerUsers {
     }
   }
 
+  pub fn from_secret(&self, secret: String) -> Result<Dynamic, Box<EvalAltResult>> {
+    let user = User::from_secret(self.client.clone(), &secret)?;
+    let acc = user.acc();
+    let shared = Dynamic::from(SharedUser(Arc::new(RwLock::new(user))));
+    self.account_map.insert(acc, shared.clone());
+    Ok(shared)
+  }
+
   pub fn find_by_account(&self, acc: AccountId) -> Dynamic {
     self
       .account_map
@@ -190,6 +210,10 @@ impl Users {
     self.0.find_by_account(acc)
   }
 
+  fn from_secret(&mut self, secret: String) -> Result<Dynamic, Box<EvalAltResult>> {
+    self.0.from_secret(secret)
+  }
+
   fn get_user(&mut self, name: String) -> Result<Dynamic, Box<EvalAltResult>> {
     self.0.get_user(name)
   }
@@ -198,6 +222,7 @@ impl Users {
 pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
   engine
     .register_type_with_name::<SharedUser>("User")
+    .register_result_fn("new_user_from_secret", Users::from_secret)
     .register_get("acc", SharedUser::acc)
     .register_get("nonce", SharedUser::nonce)
     .register_fn("to_string", SharedUser::to_string)
