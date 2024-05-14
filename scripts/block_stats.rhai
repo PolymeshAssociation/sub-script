@@ -61,6 +61,7 @@ let total_success = 0;
 let total_error = 0;
 let total_non_confidential = 0;
 let total_confidential = 0;
+let total_fees = 0;
 let non_empty_blocks = 0;
 while block_number <= end_block {
 	let blocks = next_blocks;
@@ -95,6 +96,7 @@ while block_number <= end_block {
 		let count_non_confidential = 0;
 		let count_confidential = 0;
 		let count_events = #{};
+		let block_fees = 0;
 		for (event, event_idx) in events {
 			// Get the extrinsic index.
 			let extrinsic_idx = 0;
@@ -141,8 +143,17 @@ while block_number <= end_block {
 					count_extrinsics_error += 1;
 					total_extrinsics += 1;
 					total_error += 1;
+					print(`${block.block_number}: idx=${extrinsic_idx}, event=${event_id}, attr=${attributes}`);
 				}
 				//print(` -- mod=${module_id}, event=${event_id}, attr=${attributes}`);
+			}
+			// Transaction fees
+			if module_id == "TransactionPayment" {
+			  if event_id == "TransactionFeePaid" {
+					let fee = attributes[1];
+					block_fees += fee;
+					total_fees += fee;
+				}
 			}
 			let count_this_event = false;
 			if module_id == "Settlement" {
@@ -177,7 +188,7 @@ while block_number <= end_block {
 		let block_percent = (block_weight / max_block_weight * 100).to_string();
 		block_percent.truncate(4);
 		block_weight /= 1000000000;
-		print(`${block.block_number}: % filled=${block_percent}, extrinsics=${count_extrinsics} success=${count_extrinsics_success}, failed=${count_extrinsics_error}`);
+		print(`${block.block_number}: % filled=${block_percent}, extrinsics=${count_extrinsics} success=${count_extrinsics_success}, failed=${count_extrinsics_error}, fees=${block_fees}`);
 		// Empty blocks only have one `Timestamp` call.
 		if count_extrinsics > 0 {
 			print(`  -- ${block.block_number}: ${count_events}`);
@@ -196,11 +207,13 @@ print(`Non-empty blocks: ${non_empty_blocks} (elapsed time ${elapsed} seconds)`)
 print(`total extrinsics: ${total_extrinsics}`);
 print(`total extrinsic success: ${total_success}`);
 print(`total extrinsic failed: ${total_error}`);
+print(`fees: total=${total_fees}`);
 if total_non_confidential > 0 {
 	let ps = (total_non_confidential / elapsed).to_string();
 	ps.truncate(5);
 	print(`total Non-confidential settlements: ${total_non_confidential}`);
 	print(`Non-confidential settlements per second: ${ps}`);
+	print(`fees / settlements: ${total_fees / total_non_confidential}`);
 }
 if total_confidential > 0 {
 	let ps = (total_confidential / elapsed).to_string();
