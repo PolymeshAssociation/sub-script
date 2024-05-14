@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "confidential_assets"
 version = "1.0.0"
-source = "git+ssh://git@github.com/PolymeshAssociation/confidential_assets.git?branch=MESH-2112-improve_proofs#5e3df0ee85df83829c3028cfa15b8e6c476eeb4a"
+source = "git+https://github.com/PolymeshAssociation/confidential_assets?branch=MESH-2112-improve_proofs#30e9ab6f25f03ad5e49d91a03296df961a9102a6"
 dependencies = [
  "bincode",
  "bulletproofs",
@@ -421,6 +421,7 @@ dependencies = [
  "curve25519-dalek-ng",
  "itertools",
  "lazy_static",
+ "log",
  "merlin 3.0.0",
  "parity-scale-codec",
  "rand 0.8.5",
@@ -428,9 +429,8 @@ dependencies = [
  "rayon",
  "scale-info",
  "serde",
- "sha3 0.9.1",
- "sp-std",
  "thiserror",
+ "uuid",
  "zeroize",
 ]
 
@@ -3435,7 +3435,7 @@ dependencies = [
 [[package]]
 name = "sp-core-hashing"
 version = "5.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "blake2",
  "byteorder",
@@ -3460,7 +3460,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "5.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3470,7 +3470,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.13.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -3496,7 +3496,7 @@ dependencies = [
 [[package]]
 name = "sp-io"
 version = "7.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "bytes 1.1.0",
  "ed25519",
@@ -3537,7 +3537,7 @@ dependencies = [
 [[package]]
 name = "sp-panic-handler"
 version = "5.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -3587,7 +3587,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "6.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "Inflector",
  "proc-macro-crate",
@@ -3611,7 +3611,7 @@ dependencies = [
 [[package]]
 name = "sp-state-machine"
 version = "0.13.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "hash-db",
  "log",
@@ -3631,12 +3631,12 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "5.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 
 [[package]]
 name = "sp-storage"
 version = "7.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -3649,7 +3649,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "6.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "parity-scale-codec",
  "sp-std",
@@ -3712,7 +3712,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "7.0.0"
-source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#497e3a771f6951815613af339a1d2936af0e3cb6"
+source = "git+https://github.com/PolymeshAssociation/substrate?branch=polymesh-v6-monthly-2023-03#9589e80530a5daf04d67bdb28da563af74289102"
 dependencies = [
  "anyhow",
  "impl-trait-for-tuples",
@@ -4208,9 +4208,9 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "digest 0.10.3",
- "rand 0.7.3",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
@@ -4288,6 +4288,12 @@ dependencies = [
  "matches",
  "percent-encoding",
 ]
+
+[[package]]
+name = "uuid"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e395fcf16a7a3d8127ec99782007af141946b4795001f876d54fb0d55978560"
 
 [[package]]
 name = "valuable"
