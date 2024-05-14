@@ -7,8 +7,6 @@ use hex::FromHex;
 use sp_core::{blake2_256, H256};
 use parity_scale_codec::Encode;
 
-use rand::{Rng, rngs::StdRng, SeedableRng};
-
 use rhai::{Array, Blob, Dynamic, Engine, EvalAltResult, INT};
 
 #[derive(Clone)]
@@ -25,21 +23,15 @@ impl UtilsPlugin {
     } else if randomness.is::<Blob>() {
       randomness.cast::<Blob>()
     } else {
-      return Err(format!("Invalid randomness type.").into());
+      vec![0u8; 32]
     };
     let rand = H256::from_slice(&rand);
-    let seed = (rand, slot).using_encoded(blake2_256);
-    let mut rng = StdRng::from_seed(seed);
-    let idx = rng.gen_range(0..authorities_len);
-    Ok(idx)
-    /*
-    let rand = sp_core::U256::from((rand, slot).using_encoded(blake2_256));
+    let rand = sp_core::U256::from((rand, slot as u64).using_encoded(blake2_256));
 
     let authorities_len = sp_core::U256::from(authorities_len);
     let idx = rand % authorities_len;
 
     Ok(idx.as_u32() as _)
-    */
   }
 
   pub fn write_hex_to_file(&mut self, file: &str, val: &str) -> Result<(), Box<EvalAltResult>> {
@@ -48,6 +40,10 @@ impl UtilsPlugin {
     f.write_all(&bytes).map_err(|e| e.to_string())?;
 
     Ok(())
+  }
+
+  pub fn from_hex(&mut self, val: &str) -> Result<Vec<u8>, Box<EvalAltResult>> {
+    Ok(Vec::from_hex(&val[2..]).map_err(|e| e.to_string())?)
   }
 }
 
@@ -58,6 +54,7 @@ pub fn init_engine(
   engine
     .register_type_with_name::<UtilsPlugin>("UtilsPlugin")
     .register_result_fn("babe_secondary_slot_author", UtilsPlugin::babe_secondary_slot_author)
+    .register_result_fn("from_hex", UtilsPlugin::from_hex)
     .register_result_fn("write_hex_to_file", UtilsPlugin::write_hex_to_file);
 
   let plugin = UtilsPlugin::new()?;
