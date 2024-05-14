@@ -45,6 +45,7 @@ if end_block > chain_current_block.block_number {
 
 let last_rt = ();
 let last_types = Types;
+let last_call_ty = Types.resolve("RuntimeCall");
 let cur_spec = 0;
 
 let block_number = start_block;
@@ -54,6 +55,7 @@ let counter = 0;
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);
 
 let last_ts = ();
+let last_slot = ();
 while block_number <= end_block {
 	let blocks = next_blocks;
 	block_number += blocks.len();
@@ -70,11 +72,13 @@ while block_number <= end_block {
 			last_rt = rt;
 			last_types = TypesRegistry.get_block_types(RPC, rt, hash);
 			cur_spec = rt.specVersion;
+			last_call_ty = last_types.resolve("RuntimeCall");
 			print(`================= New spec version: ${cur_spec}`);
 		}
 		let block = RPC.get_response_as_block(last_types, block.block);
 
 		// Get decoded transactions from block.
+		block.set_call_ty(last_call_ty);
 		let calls = block.extrinsics;
 		let c_count = calls.len;
 		for xt in block.extrinsics {
@@ -83,13 +87,15 @@ while block_number <= end_block {
 				continue;
 			}
 			let args = dec.Timestamp.set;
-			if type_of(args) != "array" {
+			//print(`Timestamp: ${dec}, args=${args}`);
+			if type_of(args) != "map" {
 				continue;
 			}
-			let ts = args[0];
+			let ts = args.now;
+			//print(`last_ts=${last_ts}, ts=${ts}`);
 			if last_ts != () {
 				let diff_ts = (ts - last_ts) / 1000.0;
-				if diff_ts > 6.01 || c_count > 2 {
+				if diff_ts > 6.01 { //|| c_count > 2 {
 					print(`${block.block_number}: ts=${ts}, diff=${diff_ts}, calls=${c_count}`);
 				}
 			}

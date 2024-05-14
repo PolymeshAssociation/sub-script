@@ -2,13 +2,19 @@ import "scripts/mod/polymesh" as p;
 
 print("Create NFT collection");
 
-let alice = USER.Alice;
-
 let ticker = ARG.shift();
 if ticker == () {
 	print("Need ticker");
 	return;
 }
+let user = ARG.shift();
+if user == () {
+	user = USER.Alice;
+} else {
+	user = USER.new_user_from_secret(user)
+}
+print(`Signer ${user}`);
+
 let image_base = "ipfs://QmfUARYf1VrRYPGEmxaKpdJBEyzkDn2nmk7PAX73TENpCo/";
 
 let letters = ["P", "O", "L", "Y", "M", "E", "S", "H"];
@@ -23,7 +29,7 @@ let last_bonus = max_bonus;
 let last_rarity = max_rarity;
 let last_variant = max_variant;
 
-for idx in range(0, 30000) {
+for idx in range(0, 10000) {
 	last_variant += 1;
 	if last_variant > max_variant {
 		last_variant = 0;
@@ -48,7 +54,7 @@ for idx in range(0, 30000) {
 }
 
 print("Submit NFT mints in batches.");
-let results = p::execute_batch_all(alice, mints, 200);
+let results = p::execute_batch_all(user, mints, 200);
 print("Wait for batches to be included in a block.");
 p::wait_for_in_block(results);
 print("Finished");

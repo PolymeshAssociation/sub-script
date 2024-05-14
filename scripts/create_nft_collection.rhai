@@ -1,14 +1,19 @@
 print("Create NFT collection");
 
-let alice = USER.Alice;
-
 let ticker = ARG.shift();
 if ticker == () {
 	print("Need ticker");
 	return;
 }
+let user = ARG.shift();
+if user == () {
+	user = USER.Alice;
+} else {
+	user = USER.new_user_from_secret(user)
+}
+print(`Signer ${user}`);
 
-let res = alice.submit(Utility.batch_atomic([
+let res = user.submit(Utility.batch_atomic([
 	Asset.create_asset("Nft SZN 2024", ticker, false, #{ NonFungible: #{ Derivative: () } }, [], ()),
 	Asset.register_asset_metadata_local_type(ticker, "Variant", #{url: (), description: "Variant of NFT Image (1-50)", type_def: "Number - not SCALE encoded"}),
 	Asset.register_asset_metadata_local_type(ticker, "Rarity", #{url: (), description: "Rarity of NFT image (Rare, Uncommon, Common)", type_def: "Text - not SCALE encoded"}),
