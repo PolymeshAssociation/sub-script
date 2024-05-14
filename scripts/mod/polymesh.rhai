@@ -229,7 +229,7 @@ fn mock_users(users, balance, gen_dids) {
 		}
 	}
 
-	let results = cdd_user.execute_force_batch(calls, 800);
+	let results = cdd_user.execute_force_batch(calls, 400);
 	print("MockUsers: Wait for batch results");
 	wait_for_in_block(results);
 	return users;
@@ -676,13 +676,14 @@ fn create_buy_settlement(exchange, venue_id, buyer, seller, asset, coin, asset_a
 }
 
 fn get_settlement_id(settlement) {
-	// Wait for settlement to be created and get the instruction_id.
+	let res = settlement.res;
 	let instruction_id = ();
-	for event in settlement.res.events("Settlement.InstructionCreated") {
+	// Wait for settlement to be created and get the instruction_id.
+	for event in res.events("Settlement.InstructionCreated") {
 		instruction_id = event.args[2];
 	}
 	if instruction_id == () {
-		let reason = settlement.res.result;
+		let reason = res.result;
 		print(`Failed to create instruction: ${settlement}`);
 		for (side, idx) in settlement.sides {
 			print(`  - side[${idx}] = ${side.portfolio.did}`);
@@ -692,18 +693,19 @@ fn get_settlement_id(settlement) {
 }
 
 fn affirm_settlement(settlement) {
+	return settlement.affirm_settlement();
+}
+
+fn affirm_settlement() {
 	let results = [];
 
 	// Wait for settlement to be created and get the instruction_id.
-	let instruction_id = get_settlement_id(settlement);
-	if instruction_id == () {
-		return [];
-	}
+	let instruction_id = get_settlement_id(this);
 
-	// Each side affirms the settlement.
-	let leg_count = settlement.leg_count;
-	let side_counts = settlement.side_counts;
-	for (side, idx) in settlement.sides {
+	// Each side affirms the this.
+	let leg_count = this.leg_count;
+	let side_counts = this.side_counts;
+	for (side, idx) in this.sides {
 		if side_counts != () {
 			let counts = side_counts[idx];
 			results += side.user.submit(Settlement.affirm_instruction_with_count(instruction_id, [side.portfolio], counts));
@@ -715,9 +717,13 @@ fn affirm_settlement(settlement) {
 }
 
 fn affirm_settlements(settlements) {
+	return settlements.affirm_settlements();
+}
+
+fn affirm_settlements() {
 	let results = [];
-	for settlement in settlements {
-		results += affirm_settlement(settlement);
+	for settlement in this {
+		results += settlement.affirm_settlement();
 	}
 	return results;
 }
