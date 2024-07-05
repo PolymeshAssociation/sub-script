@@ -72,14 +72,22 @@ pub struct ConfidentialUser {
 
 impl ConfidentialUser {
   pub fn new(user: SharedUser) -> Self {
-    let name = user.name();
-    let seed = blake2_256(name.as_bytes());
+    Self::from_user_idx(user, 0)
+  }
+
+  pub fn sub_account(&self, idx: INT) -> Self {
+    Self::from_user_idx(self.user.clone(), idx)
+  }
+
+  fn from_user_idx(user: SharedUser, idx: INT) -> Self {
+    let name_idx = format!("{}-{}", user.name(), idx);
+    let seed = blake2_256(name_idx.as_bytes());
     let mut rng = StdRng::from_seed(seed);
 
     let elg_secret = ElgamalSecretKey::new(Scalar::random(&mut rng));
     Self {
+      name: user.name(),
       user,
-      name,
       keys: ElgamalKeys {
         public: elg_secret.get_public_key(),
         secret: elg_secret,
@@ -182,6 +190,11 @@ impl ConfidentialUser {
 pub struct SharedConfidentialUser(Arc<RwLock<ConfidentialUser>>);
 
 impl SharedConfidentialUser {
+  pub fn sub_account(&mut self, idx: INT) -> Self {
+    let account = self.0.read().unwrap().sub_account(idx);
+    Self(Arc::new(RwLock::new(account)))
+  }
+
   pub fn get_signer(&mut self) -> SharedUser {
     self.0.read().unwrap().get_signer()
   }
@@ -287,6 +300,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
     types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::ConfidentialAccount")?;
     types.register_scale_type::<ElgamalPublicKey>("pallet_confidential_asset::AuditorAccount")?;
     types.register_scale_type::<CipherText>("confidential_assets::elgamal::CipherText")?;
+    types.register_scale_type::<CipherText>("polymesh_host_functions::elgamal::HostCipherText")?;
     types.register_scale_type::<CipherText>("CipherText")?;
 
     Ok(())
@@ -308,6 +322,7 @@ pub fn init_engine(
 
   engine
     .register_type_with_name::<SharedConfidentialUser>("ConfidentialUser")
+    .register_fn("sub_account", SharedConfidentialUser::sub_account)
     .register_get("signer", SharedConfidentialUser::get_signer)
     .register_get("keys", SharedConfidentialUser::get_keys)
     .register_get("pub_key", SharedConfidentialUser::get_pub_key)
