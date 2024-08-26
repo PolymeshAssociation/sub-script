@@ -51,7 +51,7 @@ let cur_spec = 0;
 let block_number = start_block;
 let counter = 0;
 
-let max_block_weight = 2000.0 * 1_000_000_000.0;
+let max_block_weight = 2700.0 * 1_000_000_000.0;
 
 // Pre-fetch a batch of blocks.
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);
@@ -61,6 +61,7 @@ let total_success = 0;
 let total_error = 0;
 let total_non_confidential = 0;
 let total_confidential = 0;
+let total_confidential_moves = 0;
 let total_fees = 0;
 let non_empty_blocks = 0;
 while block_number <= end_block {
@@ -87,6 +88,9 @@ while block_number <= end_block {
 		let e_count = 0;
 		if events != () {
 			e_count = events.len();
+		} else {
+			print(`${block.block_number}: missing events, or failed to decode.`);
+			events = [];
 		}
 
 		let block_weight = 0;
@@ -168,6 +172,10 @@ while block_number <= end_block {
 					count_confidential += 1;
 					total_confidential += 1;
 				}
+				if event_id == "FundsMoved" {
+					count_confidential += 1;
+					total_confidential_moves += 1;
+				}
 				count_this_event = true;
 			}
 			if count_this_event {
@@ -188,7 +196,9 @@ while block_number <= end_block {
 		let block_percent = (block_weight / max_block_weight * 100).to_string();
 		block_percent.truncate(4);
 		block_weight /= 1000000000;
-		print(`${block.block_number}: % filled=${block_percent}, extrinsics=${count_extrinsics} success=${count_extrinsics_success}, failed=${count_extrinsics_error}, fees=${block_fees}`);
+		if count_extrinsics > 0 {
+			print(`${block.block_number}: % filled=${block_percent}, extrinsics=${count_extrinsics} success=${count_extrinsics_success}, failed=${count_extrinsics_error}, fees=${block_fees}`);
+		}
 		// Empty blocks only have one `Timestamp` call.
 		if count_extrinsics > 0 {
 			print(`  -- ${block.block_number}: ${count_events}`);
@@ -220,6 +230,12 @@ if total_confidential > 0 {
 	ps.truncate(5);
 	print(`total confidential settlements: ${total_confidential}`);
 	print(`Confidential settlements per second: ${ps}`);
+}
+if total_confidential_moves > 0 {
+	let ps = (total_confidential_moves / elapsed).to_string();
+	ps.truncate(5);
+	print(`total confidential asset moves: ${total_confidential_moves}`);
+	print(`Confidential asset moves per second: ${ps}`);
 }
 let tps = (total_extrinsics / elapsed).to_string();
 tps.truncate(5);

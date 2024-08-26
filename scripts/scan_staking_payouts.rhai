@@ -12,7 +12,6 @@ count = if count == () { 10 } else { parse_int(count) };
 // Batch size.
 let batch_size = ARG.shift();
 batch_size = if batch_size == () { 10 } else { parse_int(batch_size) };
-let repeat = 0;//400;
 
 let end_block = start_block + count;
 
@@ -31,10 +30,10 @@ fn get_block_hashes(block_number, end_block, batch_size) {
 	for (block, idx) in blocks {
 		let hash = RPC.get_response(block.hash);
 		block.hash = hash;
-		// Request RuntimeVersion, Block, and events.
-		//block.rt = RPC.async_method("state_getRuntimeVersion",[hash]);
-		//block.block = RPC.async_method("chain_getBlock",[hash]);
-		//block.events = RPC.async_method("state_getStorage",["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7", hash]);
+		// Request RuntimeVersion, Block.
+		block.rt = RPC.async_method("state_getRuntimeVersion",[hash]);
+		block.block = RPC.async_method("chain_getBlock",[hash]);
+		block.events = RPC.async_method("state_getStorage",["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7", hash]);
 		blocks[idx] = block;
 	}
 	return blocks;
@@ -47,6 +46,7 @@ if end_block > chain_current_block.block_number {
 
 let last_rt = ();
 let last_types = Types;
+let last_call_ty = Types.resolve("RuntimeCall");
 let cur_spec = 0;
 
 let block_number = start_block;
@@ -55,22 +55,17 @@ let counter = 0;
 // Pre-fetch a batch of blocks.
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);
 
+let last_ts = ();
+let last_slot = ();
 while block_number <= end_block {
 	let blocks = next_blocks;
 	block_number += blocks.len();
-	if block_number >= end_block && repeat > 0 {
-		print(`------------------- Repeat scan: ${repeat}`);
-		repeat -= 1;
-		block_number = start_block;
-	}
 	if block_number <= end_block {
 		// Pre-fetch next batch.
 		next_blocks = get_block_hashes(block_number, end_block, batch_size);
 	}
 	for block in blocks {
 		let hash = block.hash;
-		print(`${block.block_number}: ${hash}`);
-		/*
 		// Load the block's RuntimeVersion.
 		let rt = RPC.get_response_as_runtime_version(block.rt);
 
@@ -78,39 +73,61 @@ while block_number <= end_block {
 			last_rt = rt;
 			last_types = TypesRegistry.get_block_types(RPC, rt, hash);
 			cur_spec = rt.specVersion;
-			print(`================= New spec version: ${cur_spec}`);
+			last_call_ty = last_types.resolve("RuntimeCall");
+			print(`${block.number}: ================= New spec version: ${cur_spec}`);
 		}
 		let events = RPC.get_response_as_block_events(last_types, block.events);
 		let block = RPC.get_response_as_block(last_types, block.block);
 
-		let e_count = 0;
-		if events != () {
-			e_count = events.len();
-		}
-		*/
-
-		// Get decoded transactions from block.
-		//let calls = block.extrinsics;
-		let c_count = 0;//calls.len();
-		if c_count != 1 { //|| e_count != 1 {
-			/*
-			print(`${block.block_number}: ${hash}: spec: ${cur_spec}: calls = ${c_count}, events = ${e_count}`);
-			print(`- calls:`);
-			for xt in block.extrinsics {
-				if xt.is_signed {
-					print(`  -- signed:${xt.signed_by} ${xt.decoded_call}`);
-				} else {
-					print(`  -- unsigned ${xt.decoded_call}`);
+		for (event, event_idx) in events {
+			// Get the extrinsic index.
+			let extrinsic_idx = 0;
+			let phase = event.phase;
+			if event.phase != () {
+				extrinsic_idx = event.phase.ApplyExtrinsic;
+			}
+			// Skip the `Timestamp` call.
+			if extrinsic_idx == 0 {
+				continue;
+			}
+			// Get event module_id and event_id.
+			let attributes = [];
+			let module_id = "";
+			let event_id = "";
+			if event.event != () {
+				for mod_name in event.event.keys() {
+					module_id = mod_name;
+					let mod = event.event[mod_name];
+					for event_name in mod.keys() {
+						event_id = event_name;
+						attributes = mod[event_name];
+					}
 				}
 			}
-			//print(`events = ${events}`);
-			// */
-		} else {
-			counter += 1;
-			if counter > 1000 {
-				counter = 0;
-				print(`number = ${block.block_number}`);
+			if attributes == () {
+				attributes = [];
 			}
+			if module_id == "Staking" {
+				if event_id == "EraPaid" {
+					let era = attributes[0];
+					print(`${block.block_number}: EraPaid=${era}`);
+				}
+				if event_id == "PayoutStarted" {
+					let era = attributes[0];
+					//print(`${block.block_number}: PayoutStarted=${era}`);
+				}
+				//print(` -- mod=${module_id}, event=${event_id}, attr=${attributes}`);
+			}
+			if module_id == "ElectionProviderMultiPhase" {
+				if event_id == "PhaseTransitioned" || event_id == "ElectionFinalized" {
+					print(`${block.block_number}: phase=${phase}: mod=${module_id}, event=${event_id}, attr=${attributes}`);
+				}
+			}
+		}
+		counter += 1;
+		if counter > 900 {
+			counter = 0;
+			print(`number = ${block.block_number}`);
 		}
 	}
 }

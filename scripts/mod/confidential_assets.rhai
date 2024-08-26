@@ -512,6 +512,12 @@ fn create_buy_settlement(exchange, buyer, seller, asset, coin, asset_amount, coi
 }
 
 const MAX_CONFIDENTIAL_LEGS = 10;
+//const MAX_CONFIDENTIAL_MOVES = 1530;
+//const MAX_CONFIDENTIAL_MOVES = 1100;
+//const MAX_CONFIDENTIAL_MOVES = 960;
+//const MAX_CONFIDENTIAL_MOVES = 200;
+const MAX_CONFIDENTIAL_MOVES = 32;
+const MAX_CONFIDENTIAL_MOVES = 128;
 
 fn setup_exchanges(assets, exchanges) {
 	let results = [];
@@ -538,6 +544,55 @@ fn setup_exchanges(assets, exchanges) {
 
 		results += issuer.signer.submit(ConfidentialAsset.allow_venues(asset_id, venues));
 	}
+	return results;
+}
+
+fn asset_fund_accounts(asset, sender, accounts, amount) {
+	print(`  fund_accounts 1: accounts=${accounts.len()}`);
+	let asset_id = asset.asset_id;
+	let auditors = asset.auditors_keys();
+	let sender_key = sender.pub_key;
+
+	// Initialize the users confidential accounts.
+	let results = init_accounts(accounts);
+	p::wait_for_in_block(results);
+
+	// Create move_assets batches.
+	let batches = [];
+	while accounts.len() > 0 {
+		let receivers = accounts.cut_head(global::MAX_CONFIDENTIAL_MOVES);
+		let moves = [];
+		for receiver in receivers {
+			let receiver_key = receiver.pub_key;
+			// Get Sender's balance from the chain.
+			let sender_balance = sender.get_confidential_balance(asset.asset_id);
+			//print(`sender_proof: amount=${amount}, sender_balance=${sender_balance.balance}`);
+
+			// Sender affirms.
+			let sender_proof = sender.create_sender_proof(
+					receiver_key,
+					auditors,
+					amount,
+					sender_balance.enc,
+					sender_balance.balance,
+				);
+			//print(`sender_proof = ${sender_proof}`);
+			sender.sub_confidential_balance(asset_id, sender_proof.sender_amount);
+			moves += #{
+				from: sender_key,
+				to: receiver_key,
+				proofs: [[asset_id, sender_proof]],
+			};
+		}
+		batches.push(moves);
+	}
+	print(`  fund_accounts: accounts=${accounts.len()}, batches=${batches.len()}`);
+
+	let results = [];
+	for batch in batches {
+		results += sender.signer.submit(ConfidentialAsset.move_assets(batch));
+	}
+
 	return results;
 }
 

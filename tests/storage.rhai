@@ -1,13 +1,13 @@
-import "../scripts/mod/polymesh" as p;
+import "./scripts/mod/polymesh" as p;
 
 // Test user.
 let user = USER.Test123;
 
 // Make sure the user has an Identity.
-p::mock_user(user, 20.0);
+//p::mock_user(user, 20.0);
 
-let val = STORAGE.map("Identity", "KeyToIdentityIds", user.acc);
-print(`did = ${val}`);
+//let val = STORAGE.map("Identity", "KeyToIdentityIds", user.acc);
+//print(`did = ${val}`);
 
 let paged = STORAGE.double_paged("Identity", "Authorizations", #{
 		Account: user.acc
@@ -23,7 +23,7 @@ do {
 	print(`auths = ${val}`);
 } while paged.has_more;
 
-//*
+/*
 let paged = STORAGE.map_paged("Identity", "DidRecords");
 let total_dids = 0;
 let total_keys = 0;
@@ -46,6 +46,7 @@ do {
 print(`total_dids = ${total_dids}`);
 print(`total_keys = ${total_keys}`);
 print(`max_keys = ${max_keys}`);
+*/
 
 let val = STORAGE.map("System", "Account", user.acc);
 print(`did = ${val}`);
