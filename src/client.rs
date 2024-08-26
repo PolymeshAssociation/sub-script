@@ -53,7 +53,9 @@ pub struct RuntimeVersion {
 pub struct ChainProperties {
   #[serde(default)]
   pub ss58_format: u16,
+  #[serde(default)]
   pub token_decimals: u32,
+  #[serde(default)]
   pub token_symbol: String,
 }
 

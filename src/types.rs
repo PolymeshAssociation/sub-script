@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 #[cfg(feature = "v14")]
 use scale_info::{Field, form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
 
-use rust_decimal::{prelude::ToPrimitive, Decimal};
+use rust_decimal::{prelude::{ToPrimitive, FromPrimitive}, Decimal};
 
 use rhai::{Array, Blob, Dynamic, Engine, EvalAltResult, ImmutableString, Map as RMap};
 use smartstring::{LazyCompact, SmartString};
@@ -857,12 +857,12 @@ impl TypeMeta {
         }
         (16, true) => {
           let val = i128::decode(input)?;
-          let dec = Decimal::from(val);
+          let dec = Decimal::from_i128(val).unwrap_or_default();
           Dynamic::from_decimal(dec)
         }
         (16, false) => {
           let val = u128::decode(input)?;
-          let dec = Decimal::from(val);
+          let dec = Decimal::from_u128(val).unwrap_or_default();
           Dynamic::from_decimal(dec)
         }
         _ => Err("Unsupported integer type")?,
@@ -1820,14 +1820,18 @@ impl InnerTypesRegistry {
       .load_schema(&format!("{}/init_{}.json", schema_prefix, spec_version))
       .is_err()
     {
-      types.load_schema(&self.substrate_types)?;
+      if types.load_schema(&self.substrate_types).is_err() {
+        log::warn!("Failed to load basic Substrate types.");
+      }
     }
     // Load custom chain types.
     if types
       .load_schema(&format!("{}/{}.json", schema_prefix, spec_version))
       .is_err()
     {
-      types.load_schema(&self.custom_types)?;
+      if types.load_schema(&self.custom_types).is_err() {
+        log::warn!("Failed to load custom Substrate types for: {name}, spec: {spec_version}");
+      }
     }
 
     for init in &self.initializers {
