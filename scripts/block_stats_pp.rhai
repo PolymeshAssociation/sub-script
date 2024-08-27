@@ -51,7 +51,7 @@ let cur_spec = 0;
 let block_number = start_block;
 let counter = 0;
 
-let max_block_weight = 2000.0 * 1_000_000_000.0;
+let max_block_weight = 2700.0 * 1_000_000_000.0;
 
 // Pre-fetch a batch of blocks.
 let next_blocks = get_block_hashes(block_number, end_block, batch_size);

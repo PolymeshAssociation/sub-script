@@ -470,6 +470,20 @@ fn add_investor_uniqueness_claim(user, ticker, uid) {
 	return [];
 }
 
+// Get user Portfolio ID from name.
+fn get_user_portfolio(user, name) {
+	let did = get_did(user);
+	if name == "Default" {
+		return #{ did: did, kind: #{ Default: () } };
+	}
+	let port_number = STORAGE.double_map("Portfolio", "NameToNumber", did, name);
+	if port_number != () {
+		return #{ did: did, kind: #{ User: port_number } };
+	} else {
+		return ();
+	}
+}
+
 // get a list of the user's venues.
 fn get_user_venues(user) {
 	let did = get_did(user);
@@ -537,6 +551,41 @@ fn get_signers_next_receipt_uid(user) {
 fn create_venue(user, venue_type) {
 	// Create venue.
 	return user.submit(Settlement.create_venue("", [], venue_type));
+}
+
+// Create portfolio.
+fn create_portfolio(user, name) {
+	return user.submit(Portfolio.create_portfolio(name));
+}
+
+// Get or create portfolios.
+fn get_or_create_portfolios(user, names) {
+	let results = [];
+	let portfolios = [];
+	for name in names {
+		let portfolio = get_user_portfolio(user, name);
+		portfolios += portfolio;
+		if portfolio == () {
+			results += create_portfolio(user, name);
+		}
+	}
+	if results.len() == 0 {
+		return portfolios;
+	}
+	wait_for_in_block(results);
+
+	let portfolios = [];
+	for name in names {
+		let portfolio = get_user_portfolio(user, name);
+		portfolios += portfolio;
+	}
+	return portfolios;
+}
+
+// Get or create portfolio.
+fn get_or_create_portfolio(user, name) {
+	let portfolios = get_or_create_portfolios(user, [name]);
+	return portfolios[0];
 }
 
 fn get_or_create_venue(user, venue_type) {
@@ -749,6 +798,21 @@ fn execute_settlements(settlements) {
 		}
 	}
 	return results;
+}
+
+fn asset_fund_portfolios(user, from, portfolios, funds) {
+	let calls = [];
+	for portfolio in portfolios {
+		calls += Portfolio.move_portfolio_funds(from, portfolio, funds);
+	}
+	return user.execute_force_batch(calls, 1126);
+	/*
+	let results = [];
+	for portfolio in portfolios {
+		results += user.submit(Portfolio.move_portfolio_funds(from, portfolio, funds));
+	}
+	return results;
+	*/
 }
 
 fn sign_orderbook_order(user, order) {
