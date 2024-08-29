@@ -7,11 +7,18 @@ if ticker == () {
 	print("Need ticker");
 	return;
 }
+let count = ARG.shift();
+count = if count == () { 10000 } else { parse_int(count) };
+
 let user = ARG.shift();
 if user == () {
 	user = USER.Alice;
 } else {
-	user = USER.new_user_from_secret(user)
+	try {
+		user = USER.new_user_from_secret(user)
+	} catch {
+		user = USER[user]
+	}
 }
 print(`Signer ${user}`);
 
@@ -29,7 +36,7 @@ let last_bonus = max_bonus;
 let last_rarity = max_rarity;
 let last_variant = max_variant;
 
-for idx in range(0, 10000) {
+for idx in range(0, count) {
 	last_variant += 1;
 	if last_variant > max_variant {
 		last_variant = 0;

@@ -9,7 +9,11 @@ let user = ARG.shift();
 if user == () {
 	user = USER.Alice;
 } else {
-	user = USER.new_user_from_secret(user)
+	try {
+		user = USER.new_user_from_secret(user)
+	} catch {
+		user = USER[user]
+	}
 }
 print(`Signer ${user}`);
 
