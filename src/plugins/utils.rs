@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 
-use hex::FromHex;
+use hex::{FromHex, ToHex};
 
-use sp_core::{blake2_256, H256};
+use sp_core::{blake2_128, blake2_256, H256};
 use parity_scale_codec::Encode;
 
 use rhai::{Array, Blob, Dynamic, Engine, EvalAltResult, INT};
@@ -45,6 +45,20 @@ impl UtilsPlugin {
   pub fn from_hex(&mut self, val: &str) -> Result<Vec<u8>, Box<EvalAltResult>> {
     Ok(Vec::from_hex(&val[2..]).map_err(|e| e.to_string())?)
   }
+
+  pub fn to_hex(&mut self, data: Vec<u8>) -> String {
+    data.encode_hex::<String>()
+  }
+
+  pub fn blake2_128(&mut self, data: Vec<u8>) -> Dynamic {
+    let hash = blake2_128(&data);
+    Dynamic::from(hash.to_vec())
+  }
+
+  pub fn blake2_256(&mut self, data: Vec<u8>) -> Dynamic {
+    let hash = blake2_256(&data);
+    Dynamic::from(hash.to_vec())
+  }
 }
 
 pub fn init_engine(
@@ -55,6 +69,9 @@ pub fn init_engine(
     .register_type_with_name::<UtilsPlugin>("UtilsPlugin")
     .register_result_fn("babe_secondary_slot_author", UtilsPlugin::babe_secondary_slot_author)
     .register_result_fn("from_hex", UtilsPlugin::from_hex)
+    .register_fn("to_hex", UtilsPlugin::to_hex)
+    .register_fn("blake2_128", UtilsPlugin::blake2_128)
+    .register_fn("blake2_256", UtilsPlugin::blake2_256)
     .register_result_fn("write_hex_to_file", UtilsPlugin::write_hex_to_file);
 
   let plugin = UtilsPlugin::new()?;

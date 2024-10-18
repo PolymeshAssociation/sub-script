@@ -257,7 +257,8 @@ impl InnerRpcConnection {
 
   fn send(&self, req: RpcRequest) -> Result<RequestToken, Box<EvalAltResult>> {
     let (msg, token) = self.add_request(req);
-    log::debug!("send_msg({:?})", msg);
+    log::debug!("send_msg(msg.len={:?})", msg.len());
+    log::trace!("send_msg({:?})", msg);
     let out = self.out.read().unwrap();
     match &*out {
       Some(out) => {

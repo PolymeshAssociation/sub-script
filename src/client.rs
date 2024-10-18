@@ -824,6 +824,7 @@ pub fn init_types_registry(types_registry: &TypesRegistry) -> Result<(), Box<Eva
   types_registry.add_init(|types, rpc, _hash| {
     // Custom encodings.
     types.register_scale_type::<Era>("Era")?;
+    types.register_scale_type::<BlockHash>("Hash")?;
 
     types.custom_encode("AccountId32", TypeId::of::<SharedUser>(), |value, data| {
       let user = value.cast::<SharedUser>();
