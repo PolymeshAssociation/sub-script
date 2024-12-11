@@ -101,7 +101,7 @@ fn key_records_did(rec) {
 	}
 	let s_key = rec.SecondaryKey;
 	if s_key != () {
-		return s_key[0];
+		return s_key;
 	}
 	return ();
 }
@@ -270,9 +270,10 @@ fn execute_batch(user, calls, max_batch_size, batch_type) {
 			_ => Utility.batch(batch_calls),
 		};
 		// Can't have too many pending txs on one single connection.
-		if results.len() > 4 {
-			wait_for_in_block(results);
-			results = [];
+		if results.len() > 10 {
+			//print(`wait for results: len=${results.len()}`);
+			//wait_for_in_block(results);
+			//results = [];
 		}
 		results += user.submit(batch_call);
 	}
@@ -485,7 +486,7 @@ fn get_user_portfolio(user, name) {
 }
 
 // get a list of the user's venues.
-fn get_user_venues(user) {
+fn get_user_venues(user, venue_type) {
 	let did = get_did(user);
 	let paged = STORAGE.double_paged("Settlement", "UserVenues", did);
 	paged.set_page_count(500);
@@ -496,7 +497,16 @@ fn get_user_venues(user) {
 			break;
 		}
 		for key in keys {
-			venues += key;
+      let venue_id = key;
+      if venue_type == () {
+			  venues += venue_id;
+      } else {
+        // Filter the venues by type.
+	      let info = STORAGE.map("Settlement", "VenueInfo", venue_id);
+        if info.venue_type == venue_type {
+			    venues += venue_id;
+        }
+      }
 		}
 	} while paged.has_more;
 	return venues;
@@ -590,7 +600,7 @@ fn get_or_create_portfolio(user, name) {
 
 fn get_or_create_venue(user, venue_type) {
 	// Get or create venue.
-	let venues = get_user_venues(user);
+	let venues = get_user_venues(user, venue_type);
 	let venue_id = ();
 	if venues != () && venues.len() > 0 {
 		venue_id = venues[0];
