@@ -11,6 +11,12 @@
       "nonce": "u64",
       "expires_at": "Moment"
     },
+    "GenerateAssetId": {
+      "prefix": "[u8; 19]",
+      "genesis_hash": "Hash",
+      "account": "AccountId",
+      "nonce": "u64"
+    },
     "AssetPermissions": {
       "_enum": {
         "Whole": "",

@@ -10,11 +10,12 @@ use sp_core::{
   storage::{StorageData, StorageKey},
   Pair,
 };
-use sp_runtime::{generic::Era, MultiSignature};
+use sp_runtime::{generic::Era, traits::Verify, MultiSignature};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use hex::FromHex;
 use dashmap::DashMap;
 
 use rust_decimal::{
@@ -1021,6 +1022,21 @@ pub fn init_engine(
     .register_get_result("wait_finalized", ExtrinsicCallResult::wait_finalized)
     .register_get("xthex", ExtrinsicCallResult::xthex)
     .register_fn("to_string", ExtrinsicCallResult::to_string)
+    .register_type_with_name::<MultiSignature>("MultiSignature")
+    .register_fn("to_string", |sig: &mut MultiSignature| format!("{:?}", sig))
+    .register_result_fn("new_sr25519_sig", |sig: &str| -> Result<MultiSignature, Box<EvalAltResult>> {
+      let sig = Vec::from_hex(&sig[2..]).map_err(|e| e.to_string())?;
+      let sig = Decode::decode(&mut sig.as_slice()).map_err(|e| e.to_string())?;
+      Ok(MultiSignature::Sr25519(sig))
+    })
+    .register_result_fn("new_ed25519_sig", |sig: &str| -> Result<MultiSignature, Box<EvalAltResult>> {
+      let sig = Vec::from_hex(&sig[2..]).map_err(|e| e.to_string())?;
+      let sig = Decode::decode(&mut sig.as_slice()).map_err(|e| e.to_string())?;
+      Ok(MultiSignature::Ed25519(sig))
+    })
+    .register_fn("verify", |sig: &mut MultiSignature, data: Vec<u8>, acc: AccountId| -> bool {
+      sig.verify(&data[..], &acc)
+    })
     .register_type_with_name::<Era>("Era")
     .register_fn("era_immortal", || Era::immortal())
     .register_fn("era_mortal", |period: i64, current: i64| {

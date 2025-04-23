@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use sp_core::{sr25519, Pair};
+use sp_core::crypto::Ss58Codec;
 use sp_runtime::{traits::Verify, AccountId32, MultiSignature};
 
 use dashmap::DashMap;
@@ -230,6 +231,9 @@ pub fn init_engine(engine: &mut Engine, client: &Client) -> Users {
     .register_result_fn("submit", SharedUser::submit_call)
     .register_result_fn("sign_call", SharedUser::sign_call)
     .register_type_with_name::<AccountId>("AccountId")
+    .register_result_fn("new_account_id", |acc: &str| -> Result<AccountId, Box<EvalAltResult>> {
+      Ok(AccountId::from_string(&acc).map_err(|e| e.to_string())?)
+    })
     .register_fn("to_string", |acc: &mut AccountId| acc.to_string())
     .register_fn("==", |acc1: AccountId, acc2: AccountId| acc1 == acc2)
     .register_type_with_name::<Users>("Users")

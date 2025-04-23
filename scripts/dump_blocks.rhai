@@ -48,6 +48,9 @@ while block_number != () {
 	let calls = block.extrinsics_filtered(filter);
 	print(`${block.block_number}: calls = ${calls}, events: ${e_count}`);
 
+	for tx in calls {
+		print(`  -- call: ${tx.hex}`);
+	}
 	for event in events {
 		print(`  -- event: ${event}`);
 	}

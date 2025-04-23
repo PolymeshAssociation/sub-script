@@ -20,6 +20,7 @@ if user == () {
 		user = USER[user]
 	}
 }
+let limit = 100000;
 print(`Issuer signer ${user}`);
 let issuer_did = p::get_did(user);
 
@@ -31,6 +32,7 @@ let investor_count = nft_count / nft_per_did;
 print(`Create ${investor_count} investors.`);
 let investors = p::create_keys_batch(`${ticker}_Investor`, 0, investor_count);
 let dids = p::get_dids(investors);
+investors.push(user);
 
 print("Reject settlements to receive airdropped NFTs");
 let results = [];
@@ -40,11 +42,16 @@ let asset_counts = #{
 	off_chain: 0,
 };
 for investor in investors {
+	let rejects = [];
 	let did = p::get_did(investor);
+	if did == () {
+		continue;
+	}
 	let portfolio = #{
 		did: did,
 		kind: #{ Default: () },
 	};
+	let count = 0;
 	let paged = STORAGE.double_paged("Settlement", "UserAffirmations", portfolio);
 	do {
 		let records = paged.next_key_values();
@@ -54,13 +61,21 @@ for investor in investors {
 		for rec in records {
 			let settlement_id = rec.key;
 			let status = rec.value;
-			if "Pending" in status {
-				//print(`Affirm Settlement: ${settlement_id}, status=${status}`);
-				results.push(investor.submit(Settlement.reject_instruction_with_count(settlement_id, portfolio, asset_counts)));
+			limit -= 1;
+			if limit <= 0 {
+				break;
 			}
+			print(`Reject Settlement: ${settlement_id}, status=${status}`);
+			rejects.push(Settlement.reject_instruction_with_count(settlement_id, portfolio, asset_counts));
+			count += 1;
 		}
-	} while paged.has_more;
+	} while paged.has_more && limit > 0;
+	if rejects.len() > 0 {
+		results += p::execute_force_batch(investor, rejects, 40);
+	}
+	print(`Rejected ${count} settlements for ${did}`);
 }
+print(`pending rejects: ${results.len()}`);
 
 print("Wait for batches to be included in a block.");
 p::wait_for_in_block(results);

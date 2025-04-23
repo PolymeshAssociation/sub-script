@@ -198,6 +198,10 @@ impl ExtrinsicDetails {
     hex::encode(hash)
   }
 
+  pub fn hex(&mut self) -> Dynamic {
+    hex::encode(&self.xt).into()
+  }
+
   pub fn call(&mut self) -> Dynamic {
     self.call.clone()
   }
@@ -530,6 +534,7 @@ pub fn init_engine(engine: &mut Engine) -> Result<(), Box<EvalAltResult>> {
     .register_get("nonce", ExtrinsicDetails::nonce)
     .register_get("len", ExtrinsicDetails::len)
     .register_get("hash", ExtrinsicDetails::hash)
+    .register_get("hex", ExtrinsicDetails::hex)
     .register_get("decoded_call", ExtrinsicDetails::call)
     .register_fn("to_string", ExtrinsicDetails::to_string)
     .register_type_with_name::<EventRecords>("EventRecords")

@@ -3,5 +3,5 @@ sleep(10);
 print("-- after sleep(10)");
 
 print("-- before sleep(30)");
-sleep(30);
+sleep(10);
 print("-- after sleep(30)");

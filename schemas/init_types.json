@@ -292,6 +292,12 @@
   "<AuthorityId as RuntimeAppPublic>::Signature": "[u8; 64]",
   "AuthorityList": "Vec<(AuthorityId, AuthorityWeight)>",
   "Call": "RuntimeCall",
+  "GenerateAssetId": {
+    "prefix": "[u8; 19]",
+    "genesis_hash": "Hash",
+    "account": "AccountId",
+    "nonce": "u64"
+  },
   "<T as Trait>::RuntimeCall": "Call",
   "<T as Config>::RuntimeCall": "Call",
   "<T as frame_system::Config>::RuntimeCall": "Call",

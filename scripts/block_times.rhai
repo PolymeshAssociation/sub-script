@@ -95,6 +95,7 @@ while block_number <= end_block {
 			//print(`last_ts=${last_ts}, ts=${ts}`);
 			if last_ts != () {
 				let diff_ts = (ts - last_ts) / 1000.0;
+				print(`${block.block_number}: diff_ts=${diff_ts}`);
 				if diff_ts > 6.01 { //|| c_count > 2 {
 					print(`${block.block_number}: ts=${ts}, diff=${diff_ts}, calls=${c_count}`);
 				}

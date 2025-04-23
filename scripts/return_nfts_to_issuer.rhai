@@ -32,23 +32,46 @@ print(`Create ${investor_count} investors.`);
 let investors = p::create_users_batch(`${ticker}_Investor`, 0, investor_count, 100000.0);
 let dids = p::get_dids(investors);
 
+// Convert ticker to 12 byte array.
+let raw_ticker = blob(12);
+raw_ticker.write_ascii(0..12, ticker);
+raw_ticker=raw_ticker.to_array();
+
 let venue_id = p::get_or_create_venue(user, #{ Other: () });
 let receiver = #{ did: issuer_did, kind: #{ Default: () }};
 let s_type = #{ SettleOnAffirmation: () };
 
 print("Create settlement to return NFTs");
-let last_nft_id = 1;
 let results = [];
-for did in dids {
-	let sender = #{ did: did, kind: #{ Default: () }};
+for investor in investors {
+	let did = p::get_did(investor);
+	let portfolio = #{
+		did: did,
+		kind: #{ Default: () },
+	};
 	let ids = [];
-	for idx in range(0, nft_per_did) {
-		ids.push(last_nft_id);
-		last_nft_id += 1;
+	let paged = STORAGE.double_paged("Portfolio", "PortfolioNFT", portfolio);
+	do {
+		let records = paged.next_key_values();
+		if records == () {
+			break;
+		}
+		for rec in records {
+			let nft = rec.key;
+			let nft_ticker = nft[0];
+			let nft_id = nft[1];
+			if nft_ticker == raw_ticker {
+				//print(`Investor NFT: id=${nft_id}`);
+				ids.push(nft_id);
+			}
+		}
+	} while paged.has_more;
+	if ids.len() == 0 {
+		continue;
 	}
 	let legs = [#{
 		NonFungible: #{
-			sender: sender,
+			sender: portfolio,
 			receiver: receiver,
 			nfts: #{
 				ticker: ticker,
@@ -58,6 +81,7 @@ for did in dids {
 	}];
 	results.push(user.submit(Settlement.add_and_affirm_instruction(venue_id, s_type, (), (), legs, [receiver], ())));
 }
+print(`Pending create settlements: ${results.len()}`);
 
 print("Wait for batches to be included in a block.");
 p::wait_for_in_block(results);
